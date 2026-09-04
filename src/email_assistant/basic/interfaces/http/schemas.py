@@ -1,4 +1,6 @@
-from pydantic import BaseModel, Field
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from email_assistant.basic.application.services import (
     ProcessEmailResult,
@@ -10,13 +12,22 @@ from email_assistant.basic.domain.models import (
 )
 
 
-class ProcessEmailRequest(BaseModel):
+class ApiModel(BaseModel):
+    """Base model for strict validation at the HTTP boundary."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        str_strip_whitespace=True,
+    )
+
+
+class ProcessEmailRequest(ApiModel):
     """JSON body accepted by the process-email endpoint."""
 
-    author: str = Field(min_length=1)
-    to: str = Field(min_length=1)
-    subject: str = Field(min_length=1)
-    email_thread: str = Field(min_length=1)
+    author: str = Field(min_length=1, max_length=320)
+    to: str = Field(min_length=1, max_length=320)
+    subject: str = Field(min_length=1, max_length=500)
+    email_thread: str = Field(min_length=1, max_length=10_000)
 
     def to_domain(self) -> Email:
         """Convert the HTTP request into a domain Email."""
@@ -29,11 +40,11 @@ class ProcessEmailRequest(BaseModel):
         )
 
 
-class ProcessEmailResponse(BaseModel):
+class ProcessEmailResponse(ApiModel):
     """JSON returned after processing an email."""
 
     classification: TriageClassification
-    reasoning: str
+    reasoning: str = Field(min_length=1, max_length=2_000)
     action: ProcessingAction
 
     @classmethod
@@ -50,7 +61,7 @@ class ProcessEmailResponse(BaseModel):
         )
 
 
-class HealthResponse(BaseModel):
+class HealthResponse(ApiModel):
     """Response returned by the health endpoint."""
 
-    status: str
+    status: Literal["ok"]

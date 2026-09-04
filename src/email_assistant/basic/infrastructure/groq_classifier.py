@@ -1,5 +1,5 @@
 from langchain.chat_models import init_chat_model
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from email_assistant.basic.application.ports import EmailClassifier
 from email_assistant.basic.domain.models import (
@@ -7,7 +7,7 @@ from email_assistant.basic.domain.models import (
     TriageClassification,
     TriageResult,
 )
-from email_assistant.prompts import (
+from email_assistant.basic.infrastructure.prompts import (
     default_background,
     default_triage_instructions,
     triage_system_prompt,
@@ -16,10 +16,17 @@ from email_assistant.prompts import (
 
 
 class RouterOutput(BaseModel):
-    """Structured output expected from the classifier model."""
+    """Validated structured output used only by the Groq classifier."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        str_strip_whitespace=True,
+    )
 
     reasoning: str = Field(
-        description="Reasoning behind the classification."
+        min_length=1,
+        max_length=2_000,
+        description="Reasoning behind the classification.",
     )
     classification: TriageClassification = Field(
         description="Whether to respond, notify, or ignore."
@@ -31,6 +38,7 @@ class GroqEmailClassifier(EmailClassifier):
 
     def __init__(
         self,
+        api_key: str,
         model_name: str = "openai/gpt-oss-20b",
         temperature: float = 0.0,
     ) -> None:
@@ -38,6 +46,7 @@ class GroqEmailClassifier(EmailClassifier):
             model_name,
             model_provider="groq",
             temperature=temperature,
+            api_key=api_key,
         )
 
         self._router = model.with_structured_output(RouterOutput)
@@ -57,17 +66,19 @@ class GroqEmailClassifier(EmailClassifier):
             email_thread=email.thread,
         )
 
-        output = self._router.invoke(
-            [
-                {
-                    "role": "system",
-                    "content": system_prompt,
-                },
-                {
-                    "role": "user",
-                    "content": user_prompt,
-                },
-            ]
+        output = RouterOutput.model_validate(
+            self._router.invoke(
+                [
+                    {
+                        "role": "system",
+                        "content": system_prompt,
+                    },
+                    {
+                        "role": "user",
+                        "content": user_prompt,
+                    },
+                ]
+            )
         )
 
         return TriageResult(

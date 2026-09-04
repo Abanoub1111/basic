@@ -1,7 +1,7 @@
-HTTP/LangGraph       Waiters accepting requests
+HTTP interface       Waiters accepting requests
 Application          Manager coordinating the work
 Domain               Rules and vocabulary of the restaurant
-Infrastructure       Kitchen equipment and external suppliers
+Infrastructure       Kitchen equipment, external suppliers, and LangGraph
 Bootstrap            Person who opens the restaurant and connects everything
 
 
@@ -12,14 +12,12 @@ Bootstrap            Person who opens the restaurant and connects everything
 | `application/ports.py` | Contracts for things the application needs | “I need something capable of classifying emails” |
 | `application/services.py` | Coordinates the use case | Classify, then respond/notify/ignore |
 | `infrastructure/groq_classifier.py` | Implements classification using Groq | `init_chat_model()` and `with_structured_output()` |
-| `infrastructure/langchain_response_agent.py` | Implements responses and tool calls | `bind_tools()`, `llm_call()`, tool execution |
-| `interfaces/langgraph/state.py` | LangGraph-specific state | `State` and `StateInput` |
-| `interfaces/langgraph/nodes.py` | Functions LangGraph invokes | `triage_router()`, `tool_node()`, `should_continue()` |
-| `interfaces/langgraph/graph.py` | Connects LangGraph nodes | `StateGraph`, edges, and compilation |
+| `infrastructure/langgraph_response_agent.py` | Implements responses through a LangGraph workflow | Model node, conditional routing, and `ToolNode` execution |
 | `interfaces/http/schemas.py` | Validates HTTP JSON | FastAPI/Pydantic request and response models |
 | `interfaces/http/routes.py` | Defines URLs | `POST /emails/process` |
-| `interfaces/http/app.py` | Creates the FastAPI application | `app = FastAPI()` |
-| `bootstrap.py` | Constructs and connects real objects | Connect Groq implementations to application services |
+| `interfaces/http/app.py` | Creates a FastAPI application from an injected service | `app = FastAPI()` |
+| `bootstrap.py` | Constructs and connects real objects | Connect Groq implementations and tools to application services |
+| `main.py` | Starts the application composition | Build the service and expose the configured FastAPI `app` |
 | `__init__.py` | Marks a directory as a Python package | Usually stays empty |
 
 
