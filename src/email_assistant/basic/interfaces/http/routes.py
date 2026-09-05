@@ -1,4 +1,5 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
+from fastapi.responses import StreamingResponse
 
 from email_assistant.basic.application.services import ProcessEmailService
 from email_assistant.basic.interfaces.http.schemas import (
@@ -7,6 +8,9 @@ from email_assistant.basic.interfaces.http.schemas import (
     ProcessEmailResponse,
     ProcessEmailsBatchRequest,
     ProcessEmailsBatchResponse,
+)
+from email_assistant.basic.interfaces.http.streaming import (
+    stream_process_email_events,
 )
 
 def create_router(
@@ -54,5 +58,37 @@ def create_router(
         results = await service.process_many(request.to_domain())
 
         return ProcessEmailsBatchResponse.from_results(results)
+
+    @router.post(
+        "/emails/process/stream",
+        response_class=StreamingResponse,
+        responses={
+            200: {
+                "content": {"text/event-stream": {}},
+                "description": "Real-time email processing events.",
+            }
+        },
+        tags=["Emails"],
+    )
+    async def process_email_stream(
+        body: ProcessEmailRequest,
+        request: Request,
+    ) -> StreamingResponse:
+        """Stream processing progress and the drafted reply over SSE."""
+
+        event_stream = stream_process_email_events(
+            service,
+            body.to_domain(),
+            request.is_disconnected,
+        )
+
+        return StreamingResponse(
+            event_stream,
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+            },
+        )
 
     return router

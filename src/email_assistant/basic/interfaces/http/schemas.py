@@ -59,6 +59,37 @@ class EmailReplyResponse(ApiModel):
         )
 
 
+class StreamStartedData(ApiModel):
+    """Payload sent when email processing starts."""
+
+    stage: Literal["started"] = "started"
+
+
+class StreamClassifiedData(ApiModel):
+    """Payload sent after email classification."""
+
+    classification: TriageClassification
+    reasoning: str = Field(min_length=1, max_length=2_000)
+
+
+class StreamRespondingData(ApiModel):
+    """Payload sent before running the response workflow."""
+
+    stage: Literal["responding"] = "responding"
+
+
+class StreamCompletedData(ApiModel):
+    """Payload sent when email processing completes."""
+
+    action: ProcessingAction
+
+
+class StreamErrorData(ApiModel):
+    """Safe error payload sent after an SSE stream has started."""
+
+    message: str = Field(min_length=1)
+
+
 class ProcessEmailResponse(ApiModel):
     """JSON returned after processing an email."""
 

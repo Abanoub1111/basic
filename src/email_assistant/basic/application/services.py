@@ -1,6 +1,6 @@
 import asyncio
-from collections.abc import Sequence
-from dataclasses import dataclass
+from collections.abc import AsyncIterator, Sequence
+from dataclasses import dataclass, field
 from enum import Enum
 
 from email_assistant.basic.application.ports import (
@@ -32,6 +32,78 @@ class ProcessEmailResult:
     reply: EmailReply | None = None
 
 
+class ProcessEmailEventType(str, Enum):
+    """Events emitted while an email is being processed."""
+
+    STARTED = "started"
+    CLASSIFIED = "classified"
+    RESPONDING = "responding"
+    REPLY_CREATED = "reply_created"
+    COMPLETED = "completed"
+
+
+@dataclass(frozen=True)
+class EmailProcessingStarted:
+    """Signal that processing has acquired a concurrency slot."""
+
+    event_type: ProcessEmailEventType = field(
+        default=ProcessEmailEventType.STARTED,
+        init=False,
+    )
+
+
+@dataclass(frozen=True)
+class EmailClassified:
+    """Report the completed triage decision."""
+
+    triage: TriageResult
+    event_type: ProcessEmailEventType = field(
+        default=ProcessEmailEventType.CLASSIFIED,
+        init=False,
+    )
+
+
+@dataclass(frozen=True)
+class EmailResponseStarted:
+    """Signal that the response workflow has started."""
+
+    event_type: ProcessEmailEventType = field(
+        default=ProcessEmailEventType.RESPONDING,
+        init=False,
+    )
+
+
+@dataclass(frozen=True)
+class EmailReplyCreated:
+    """Report the reply drafted by the response workflow."""
+
+    reply: EmailReply
+    event_type: ProcessEmailEventType = field(
+        default=ProcessEmailEventType.REPLY_CREATED,
+        init=False,
+    )
+
+
+@dataclass(frozen=True)
+class EmailProcessingCompleted:
+    """Report the final processing result."""
+
+    result: ProcessEmailResult
+    event_type: ProcessEmailEventType = field(
+        default=ProcessEmailEventType.COMPLETED,
+        init=False,
+    )
+
+
+ProcessEmailEvent = (
+    EmailProcessingStarted
+    | EmailClassified
+    | EmailResponseStarted
+    | EmailReplyCreated
+    | EmailProcessingCompleted
+)
+
+
 class ProcessEmailService:
     """Coordinate email classification and response."""
 
@@ -51,8 +123,16 @@ class ProcessEmailService:
     async def process(self, email: Email) -> ProcessEmailResult:
         """Classify an email and perform the appropriate action."""
 
-        async with self._concurrency_limiter:
-            return await self._process_email(email)
+        completed_result = None
+
+        async for event in self.process_stream(email):
+            if isinstance(event, EmailProcessingCompleted):
+                completed_result = event.result
+
+        if completed_result is None:
+            raise RuntimeError("Email processing ended without a result")
+
+        return completed_result
 
     async def process_many(
         self,
@@ -66,29 +146,42 @@ class ProcessEmailService:
             )
         )
 
-    async def _process_email(self, email: Email) -> ProcessEmailResult:
-        """Process one email after a concurrency slot has been acquired."""
+    async def process_stream(
+        self,
+        email: Email,
+    ) -> AsyncIterator[ProcessEmailEvent]:
+        """Yield typed progress events while processing one email."""
 
-        triage_result = await self._classifier.classify(email)
-        reply = None
+        async with self._concurrency_limiter:
+            yield EmailProcessingStarted()
 
-        if triage_result.classification is TriageClassification.RESPOND:
-            reply = await self._responder.respond(email)
-            action = ProcessingAction.RESPONDED
+            triage_result = await self._classifier.classify(email)
+            yield EmailClassified(triage=triage_result)
 
-        elif triage_result.classification is TriageClassification.NOTIFY:
-            action = ProcessingAction.NOTIFICATION_REQUIRED
+            reply = None
 
-        elif triage_result.classification is TriageClassification.IGNORE:
-            action = ProcessingAction.IGNORED
+            if triage_result.classification is TriageClassification.RESPOND:
+                yield EmailResponseStarted()
+                reply = await self._responder.respond(email)
+                yield EmailReplyCreated(reply=reply)
+                action = ProcessingAction.RESPONDED
 
-        else:
-            raise ValueError(
-                f"Unsupported classification: {triage_result.classification}"
+            elif triage_result.classification is TriageClassification.NOTIFY:
+                action = ProcessingAction.NOTIFICATION_REQUIRED
+
+            elif triage_result.classification is TriageClassification.IGNORE:
+                action = ProcessingAction.IGNORED
+
+            else:
+                raise ValueError(
+                    "Unsupported classification: "
+                    f"{triage_result.classification}"
+                )
+
+            yield EmailProcessingCompleted(
+                result=ProcessEmailResult(
+                    triage=triage_result,
+                    action=action,
+                    reply=reply,
+                )
             )
-
-        return ProcessEmailResult(
-            triage=triage_result,
-            action=action,
-            reply=reply,
-        )

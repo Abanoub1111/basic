@@ -10,11 +10,12 @@ Bootstrap            Person who opens the restaurant and connects everything
 |---|---|---|
 | `domain/models.py` | Core email concepts | Email and classification definitions |
 | `application/ports.py` | Contracts for things the application needs | “I need something capable of classifying emails” |
-| `application/services.py` | Coordinates the use case and bounded concurrency | Classify, then respond/notify/ignore for one or many emails |
+| `application/services.py` | Coordinates the use case, typed progress events, and bounded concurrency | Classify, then respond/notify/ignore for one or many emails |
 | `infrastructure/groq_classifier.py` | Implements classification using Groq | `init_chat_model()` and `with_structured_output()` |
 | `infrastructure/langgraph_response_agent.py` | Implements responses through a LangGraph workflow | Model node, conditional routing, and `ToolNode` execution |
 | `interfaces/http/schemas.py` | Validates HTTP JSON | FastAPI/Pydantic request and response models |
-| `interfaces/http/routes.py` | Defines URLs | `POST /emails/process` and `POST /emails/process/batch` |
+| `interfaces/http/routes.py` | Defines URLs | Regular, batch, and SSE email-processing endpoints |
+| `interfaces/http/streaming.py` | Maps application events to SSE | Serialize progress, completion, and safe error events |
 | `interfaces/http/app.py` | Creates a FastAPI application from an injected service | `app = FastAPI()` |
 | `bootstrap.py` | Constructs and connects real objects | Connect Groq implementations and tools to application services |
 | `main.py` | Starts the application composition | Build the service and expose the configured FastAPI `app` |

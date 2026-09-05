@@ -2,7 +2,13 @@ import asyncio
 import unittest
 
 from email_assistant.basic.application.services import (
+    EmailClassified,
+    EmailProcessingCompleted,
+    EmailProcessingStarted,
+    EmailReplyCreated,
+    EmailResponseStarted,
     ProcessEmailService,
+    ProcessEmailEventType,
     ProcessingAction,
 )
 from email_assistant.basic.domain.models import (
@@ -64,6 +70,56 @@ def make_email(index: int) -> Email:
 
 
 class ProcessEmailServiceTests(unittest.IsolatedAsyncioTestCase):
+    async def test_response_stream_emits_events_in_order(self) -> None:
+        service = ProcessEmailService(
+            TrackingClassifier(TriageClassification.RESPOND),
+            RecordingResponder(),
+        )
+
+        events = [
+            event async for event in service.process_stream(make_email(1))
+        ]
+
+        self.assertEqual(
+            [event.event_type for event in events],
+            [
+                ProcessEmailEventType.STARTED,
+                ProcessEmailEventType.CLASSIFIED,
+                ProcessEmailEventType.RESPONDING,
+                ProcessEmailEventType.REPLY_CREATED,
+                ProcessEmailEventType.COMPLETED,
+            ],
+        )
+        self.assertIsInstance(events[0], EmailProcessingStarted)
+        self.assertIsInstance(events[1], EmailClassified)
+        self.assertIsInstance(events[2], EmailResponseStarted)
+        self.assertIsInstance(events[3], EmailReplyCreated)
+        self.assertIsInstance(events[4], EmailProcessingCompleted)
+
+    async def test_non_response_stream_skips_response_events(self) -> None:
+        for classification in (
+            TriageClassification.NOTIFY,
+            TriageClassification.IGNORE,
+        ):
+            service = ProcessEmailService(
+                TrackingClassifier(classification),
+                RecordingResponder(),
+            )
+
+            events = [
+                event
+                async for event in service.process_stream(make_email(1))
+            ]
+
+            self.assertEqual(
+                [event.event_type for event in events],
+                [
+                    ProcessEmailEventType.STARTED,
+                    ProcessEmailEventType.CLASSIFIED,
+                    ProcessEmailEventType.COMPLETED,
+                ],
+            )
+
     async def test_process_awaits_the_responder(self) -> None:
         classifier = TrackingClassifier(TriageClassification.RESPOND)
         responder = RecordingResponder()
