@@ -31,4 +31,5 @@ def build_process_email_service(
     return ProcessEmailService(
         classifier=classifier,
         responder=responder,
+        max_concurrency=settings.groq_max_concurrency,
     )

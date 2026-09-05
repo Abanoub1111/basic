@@ -51,7 +51,7 @@ class GroqEmailClassifier(EmailClassifier):
 
         self._router = model.with_structured_output(RouterOutput)
 
-    def classify(self, email: Email) -> TriageResult:
+    async def classify(self, email: Email) -> TriageResult:
         """Classify an email using the language model."""
 
         system_prompt = triage_system_prompt.format(
@@ -67,7 +67,7 @@ class GroqEmailClassifier(EmailClassifier):
         )
 
         output = RouterOutput.model_validate(
-            self._router.invoke(
+            await self._router.ainvoke(
                 [
                     {
                         "role": "system",

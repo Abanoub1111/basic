@@ -8,6 +8,7 @@ from email_assistant.basic.application.services import (
 )
 from email_assistant.basic.domain.models import (
     Email,
+    EmailReply,
     TriageClassification,
 )
 
@@ -40,12 +41,31 @@ class ProcessEmailRequest(ApiModel):
         )
 
 
+class EmailReplyResponse(ApiModel):
+    """Reply drafted by the response workflow."""
+
+    recipient: str
+    subject: str
+    content: str
+
+    @classmethod
+    def from_domain(cls, reply: EmailReply) -> "EmailReplyResponse":
+        """Convert a domain reply into its HTTP representation."""
+
+        return cls(
+            recipient=reply.recipient,
+            subject=reply.subject,
+            content=reply.content,
+        )
+
+
 class ProcessEmailResponse(ApiModel):
     """JSON returned after processing an email."""
 
     classification: TriageClassification
     reasoning: str = Field(min_length=1, max_length=2_000)
     action: ProcessingAction
+    reply: EmailReplyResponse | None
 
     @classmethod
     def from_result(
@@ -58,6 +78,42 @@ class ProcessEmailResponse(ApiModel):
             classification=result.triage.classification,
             reasoning=result.triage.reasoning,
             action=result.action,
+            reply=(
+                EmailReplyResponse.from_domain(result.reply)
+                if result.reply is not None
+                else None
+            ),
+        )
+
+
+class ProcessEmailsBatchRequest(ApiModel):
+    """JSON body accepted by the batch process-email endpoint."""
+
+    emails: list[ProcessEmailRequest] = Field(min_length=1, max_length=20)
+
+    def to_domain(self) -> list[Email]:
+        """Convert all HTTP email requests into domain emails."""
+
+        return [email.to_domain() for email in self.emails]
+
+
+class ProcessEmailsBatchResponse(ApiModel):
+    """JSON returned after processing a batch of emails."""
+
+    results: list[ProcessEmailResponse]
+
+    @classmethod
+    def from_results(
+        cls,
+        results: list[ProcessEmailResult],
+    ) -> "ProcessEmailsBatchResponse":
+        """Convert application results into an HTTP batch response."""
+
+        return cls(
+            results=[
+                ProcessEmailResponse.from_result(result)
+                for result in results
+            ]
         )
 
 

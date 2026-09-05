@@ -12,9 +12,10 @@ from langchain_core.tools import BaseTool
 from langgraph.errors import GraphRecursionError
 from langgraph.graph import END, START, MessagesState, StateGraph
 from langgraph.prebuilt import ToolNode
+from pydantic import BaseModel, ConfigDict, Field
 
 from email_assistant.basic.application.ports import EmailResponder
-from email_assistant.basic.domain.models import Email
+from email_assistant.basic.domain.models import Email, EmailReply
 from email_assistant.basic.infrastructure.email_formatter import (
     format_email_markdown,
 )
@@ -25,6 +26,25 @@ from email_assistant.basic.infrastructure.prompts import (
     default_response_preferences,
 )
 from email_assistant.tools.default.prompt_templates import AGENT_TOOLS_PROMPT
+
+
+class WriteEmailToolCall(BaseModel):
+    """Validated arguments captured from the write_email tool call."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    to: str = Field(min_length=1)
+    subject: str = Field(min_length=1)
+    content: str = Field(min_length=1)
+
+    def to_domain(self) -> EmailReply:
+        """Convert provider-facing tool arguments into a domain reply."""
+
+        return EmailReply(
+            recipient=self.to,
+            subject=self.subject,
+            content=self.content,
+        )
 
 
 class LangGraphEmailResponder(EmailResponder):
@@ -78,13 +98,13 @@ class LangGraphEmailResponder(EmailResponder):
 
         self._graph = graph_builder.compile()
 
-    def _call_model(
+    async def _call_model(
         self,
         state: MessagesState,
     ) -> dict[str, list[BaseMessage]]:
         """Ask the model for the next action in the graph."""
 
-        response = self._model_with_tools.invoke(
+        response = await self._model_with_tools.ainvoke(
             [self._system_message, *state["messages"]]
         )
 
@@ -112,7 +132,7 @@ class LangGraphEmailResponder(EmailResponder):
 
         return END
 
-    def respond(self, email: Email) -> None:
+    async def respond(self, email: Email) -> EmailReply:
         """Use the model and available tools to respond to an email."""
 
         email_markdown = format_email_markdown(
@@ -123,7 +143,7 @@ class LangGraphEmailResponder(EmailResponder):
         )
 
         try:
-            self._graph.invoke(
+            graph_result = await self._graph.ainvoke(
                 {
                     "messages": [
                         HumanMessage(
@@ -141,3 +161,23 @@ class LangGraphEmailResponder(EmailResponder):
             raise RuntimeError(
                 "The response agent exceeded its maximum number of iterations."
             ) from error
+
+        return self._extract_reply(graph_result["messages"])
+
+    @staticmethod
+    def _extract_reply(messages: Sequence[BaseMessage]) -> EmailReply:
+        """Extract the latest validated write_email call from graph state."""
+
+        for message in reversed(messages):
+            if not isinstance(message, AIMessage):
+                continue
+
+            for tool_call in reversed(message.tool_calls):
+                if tool_call["name"] == "write_email":
+                    return WriteEmailToolCall.model_validate(
+                        tool_call["args"]
+                    ).to_domain()
+
+        raise RuntimeError(
+            "The response workflow completed without drafting an email."
+        )

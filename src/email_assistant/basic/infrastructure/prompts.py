@@ -47,7 +47,7 @@ When handling emails, follow these steps:
 2. IMPORTANT --- always call a tool and call one tool at a time until the task is complete: 
 3. For responding to the email, draft a response email with the write_email tool
 4. For meeting requests, use the check_calendar_availability tool to find open time slots
-5. To schedule a meeting, use the schedule_meeting tool with a datetime object for the preferred_day parameter
+5. To schedule a meeting, use the schedule_meeting tool with an ISO date (YYYY-MM-DD) for the preferred_day parameter
    - Today's date is """ + datetime.now().strftime("%Y-%m-%d") + """ - use this for scheduling meetings accurately
 6. If you scheduled a meeting, then draft a short response email using the write_email tool
 7. After using the write_email tool, the task is complete

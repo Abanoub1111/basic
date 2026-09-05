@@ -1,4 +1,4 @@
-from pydantic import SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -14,6 +14,7 @@ class AppSettings(BaseSettings):
 
     groq_api_key: SecretStr
     langsmith_api_key: SecretStr | None = None
+    groq_max_concurrency: int = Field(default=3, ge=1, le=20)
 
     @field_validator("groq_api_key", "langsmith_api_key")
     @classmethod

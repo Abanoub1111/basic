@@ -10,6 +10,7 @@ from email_assistant.basic.infrastructure.config import AppSettings
 from email_assistant.basic.infrastructure.groq_classifier import RouterOutput
 from email_assistant.basic.infrastructure.langgraph_response_agent import (
     LangGraphEmailResponder,
+    WriteEmailToolCall,
 )
 from email_assistant.basic.interfaces.http.schemas import (
     HealthResponse,
@@ -57,6 +58,52 @@ class LlmSchemaTests(unittest.TestCase):
 
 
 class LangGraphRoutingTests(unittest.TestCase):
+    def test_extract_reply_uses_write_email_before_done(self) -> None:
+        write_email_message = AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "write_email",
+                    "args": {
+                        "to": "manager@example.com",
+                        "subject": "Re: Project meeting",
+                        "content": "Tomorrow at 2 PM works for me.",
+                    },
+                    "id": "write-1",
+                    "type": "tool_call",
+                }
+            ],
+        )
+        done_message = AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "Done",
+                    "args": {"done": True},
+                    "id": "done-1",
+                    "type": "tool_call",
+                }
+            ],
+        )
+
+        reply = LangGraphEmailResponder._extract_reply(
+            [write_email_message, done_message]
+        )
+
+        self.assertEqual(reply.recipient, "manager@example.com")
+        self.assertEqual(reply.subject, "Re: Project meeting")
+        self.assertEqual(reply.content, "Tomorrow at 2 PM works for me.")
+
+    def test_write_email_call_rejects_blank_content(self) -> None:
+        with self.assertRaises(ValidationError):
+            WriteEmailToolCall.model_validate(
+                {
+                    "to": "manager@example.com",
+                    "subject": "Re: Project meeting",
+                    "content": "   ",
+                }
+            )
+
     def test_done_tool_ends_the_graph(self) -> None:
         message = AIMessage(
             content="",

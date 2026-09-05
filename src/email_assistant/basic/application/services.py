@@ -1,3 +1,5 @@
+import asyncio
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
 
@@ -7,6 +9,7 @@ from email_assistant.basic.application.ports import (
 )
 from email_assistant.basic.domain.models import (
     Email,
+    EmailReply,
     TriageClassification,
     TriageResult,
 )
@@ -26,6 +29,7 @@ class ProcessEmailResult:
 
     triage: TriageResult
     action: ProcessingAction
+    reply: EmailReply | None = None
 
 
 class ProcessEmailService:
@@ -35,17 +39,41 @@ class ProcessEmailService:
         self,
         classifier: EmailClassifier,
         responder: EmailResponder,
+        max_concurrency: int = 3,
     ) -> None:
+        if max_concurrency < 1:
+            raise ValueError("max_concurrency must be at least 1")
+
         self._classifier = classifier
         self._responder = responder
+        self._concurrency_limiter = asyncio.Semaphore(max_concurrency)
 
-    def process(self, email: Email) -> ProcessEmailResult:
+    async def process(self, email: Email) -> ProcessEmailResult:
         """Classify an email and perform the appropriate action."""
 
-        triage_result = self._classifier.classify(email)
+        async with self._concurrency_limiter:
+            return await self._process_email(email)
+
+    async def process_many(
+        self,
+        emails: Sequence[Email],
+    ) -> list[ProcessEmailResult]:
+        """Process emails concurrently while respecting the shared limit."""
+
+        return list(
+            await asyncio.gather(
+                *(self.process(email) for email in emails)
+            )
+        )
+
+    async def _process_email(self, email: Email) -> ProcessEmailResult:
+        """Process one email after a concurrency slot has been acquired."""
+
+        triage_result = await self._classifier.classify(email)
+        reply = None
 
         if triage_result.classification is TriageClassification.RESPOND:
-            self._responder.respond(email)
+            reply = await self._responder.respond(email)
             action = ProcessingAction.RESPONDED
 
         elif triage_result.classification is TriageClassification.NOTIFY:
@@ -62,4 +90,5 @@ class ProcessEmailService:
         return ProcessEmailResult(
             triage=triage_result,
             action=action,
+            reply=reply,
         )
