@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from email_assistant.basic.domain.users import User
 from collections.abc import AsyncIterator, Awaitable, Callable
 
 from pydantic import BaseModel
@@ -71,11 +72,12 @@ async def stream_process_email_events(
     service: ProcessEmailService,
     email: Email,
     is_disconnected: Callable[[], Awaitable[bool]],
+    user: User,
 ) -> AsyncIterator[str]:
     """Stream serialized events and stop cleanly on client disconnect."""
 
     try:
-        async for event in service.process_stream(email):
+        async for event in service.process_stream(email, user):
             if await is_disconnected():
                 return
 

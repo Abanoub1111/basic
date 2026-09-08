@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import DateTime, String, Text, Uuid
+from sqlalchemy import DateTime, String, Text, Uuid, ForeignKey
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -15,6 +15,7 @@ class EmailProcessingRecordRow(Base):
     __tablename__ = "email_processing_records"
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    owner_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), index=True)
     status: Mapped[str] = mapped_column(String(20), index=True)
 
     author: Mapped[str] = mapped_column(String(320))
@@ -42,3 +43,22 @@ class EmailProcessingRecordRow(Base):
         index=True,
     )
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class UserRow(Base):
+    __tablename__ = "users"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    email: Mapped[str] = mapped_column(String(320), unique=True)
+    password_hash: Mapped[str] = mapped_column(Text)
+    role: Mapped[str] = mapped_column(String(10))
+    is_active: Mapped[bool]
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class SessionRow(Base):
+    __tablename__ = "auth_sessions"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

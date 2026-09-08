@@ -8,6 +8,14 @@ from email_assistant.basic.application.models import (
     ProcessingStatus,
 )
 from email_assistant.basic.domain.models import Email
+from email_assistant.basic.domain.users import User, UserRole
+
+TEST_USER = User(uuid4(), "tester@example.com", UserRole.USER, True)
+
+class FakeAuthService:
+    async def current_user(self, token):
+        return TEST_USER
+
 
 
 class InMemoryEmailProcessingRepository:
@@ -16,10 +24,11 @@ class InMemoryEmailProcessingRepository:
     def __init__(self) -> None:
         self.records: dict[UUID, EmailProcessingRecord] = {}
 
-    async def create(self, email: Email) -> EmailProcessingRecord:
+    async def create(self, email: Email, owner_id: UUID) -> EmailProcessingRecord:
         now = datetime.now(UTC)
         record = EmailProcessingRecord(
             id=uuid4(),
+            owner_id=owner_id,
             email=email,
             status=ProcessingStatus.PROCESSING,
             result=None,

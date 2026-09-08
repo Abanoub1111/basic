@@ -18,7 +18,7 @@ from email_assistant.basic.domain.models import (
     TriageClassification,
     TriageResult,
 )
-from tests.basic.fakes import InMemoryEmailProcessingRepository
+from tests.basic.fakes import InMemoryEmailProcessingRepository, TEST_USER
 
 
 class TrackingClassifier:
@@ -79,7 +79,7 @@ class ProcessEmailServiceTests(unittest.IsolatedAsyncioTestCase):
             RecordingResponder(),
             repository,
         )
-        stream = service.process_stream(make_email(1))
+        stream = service.process_stream(make_email(1), TEST_USER)
 
         started = await anext(stream)
         await stream.aclose()
@@ -99,7 +99,7 @@ class ProcessEmailServiceTests(unittest.IsolatedAsyncioTestCase):
         )
 
         events = [
-            event async for event in service.process_stream(make_email(1))
+            event async for event in service.process_stream(make_email(1), TEST_USER)
         ]
 
         self.assertEqual(
@@ -131,7 +131,7 @@ class ProcessEmailServiceTests(unittest.IsolatedAsyncioTestCase):
 
             events = [
                 event
-                async for event in service.process_stream(make_email(1))
+                async for event in service.process_stream(make_email(1), TEST_USER)
             ]
 
             self.assertEqual(
@@ -153,7 +153,7 @@ class ProcessEmailServiceTests(unittest.IsolatedAsyncioTestCase):
         )
         email = make_email(1)
 
-        result = await service.process(email)
+        result = await service.process(email, TEST_USER)
 
         self.assertEqual(result.action, ProcessingAction.RESPONDED)
         self.assertEqual(responder.responded_to, [email])
@@ -171,7 +171,7 @@ class ProcessEmailServiceTests(unittest.IsolatedAsyncioTestCase):
         )
         emails = [make_email(index) for index in range(5)]
 
-        results = await service.process_many(emails)
+        results = await service.process_many(emails, TEST_USER)
 
         self.assertEqual(
             [result.triage.reasoning for result in results],

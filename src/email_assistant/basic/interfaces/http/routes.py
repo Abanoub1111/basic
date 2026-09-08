@@ -1,6 +1,8 @@
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, Request, Response, status
+from fastapi import APIRouter, HTTPException, Query, Request, Response, status, Depends
+from email_assistant.basic.domain.users import User
+from email_assistant.basic.interfaces.http.auth import AuthDependencies
 from fastapi.responses import StreamingResponse
 
 from email_assistant.basic.application.services import (
@@ -24,10 +26,12 @@ from email_assistant.basic.interfaces.http.streaming import (
 def create_router(
     service: ProcessEmailService,  # Dependency injection at the HTTP boundary.
     history_service: EmailHistoryService,
+    auth: AuthDependencies,
 ) -> APIRouter:
     """Create HTTP routes using the provided application service."""
 
     router = APIRouter()
+    current_user = auth.current_user_dependency()
 
     @router.get(
         "/health",
@@ -46,11 +50,12 @@ def create_router(
     )
     async def process_email(
         request: ProcessEmailRequest,
+        user: User = Depends(current_user),
     ) -> ProcessEmailResponse:
         """Classify an email and perform the appropriate action."""
 
         email = request.to_domain()
-        result = await service.process(email)
+        result = await service.process(email, user)
 
         return ProcessEmailResponse.from_result(result)
 
@@ -61,10 +66,11 @@ def create_router(
     )
     async def process_email_batch(
         request: ProcessEmailsBatchRequest,
+        user: User = Depends(current_user),
     ) -> ProcessEmailsBatchResponse:
         """Process a bounded batch of emails concurrently."""
 
-        results = await service.process_many(request.to_domain())
+        results = await service.process_many(request.to_domain(), user)
 
         return ProcessEmailsBatchResponse.from_results(results)
 
@@ -82,6 +88,7 @@ def create_router(
     async def process_email_stream(
         body: ProcessEmailRequest,
         request: Request,
+        user: User = Depends(current_user),
     ) -> StreamingResponse:
         """Stream processing progress and the drafted reply over SSE."""
 
@@ -89,6 +96,7 @@ def create_router(
             service,
             body.to_domain(),
             request.is_disconnected,
+            user,
         )
 
         return StreamingResponse(
@@ -108,10 +116,11 @@ def create_router(
     async def list_email_history(
         skip: int = Query(default=0, ge=0),
         limit: int = Query(default=20, ge=1, le=100),
+        user: User = Depends(current_user),
     ) -> EmailHistoryListResponse:
         """Return stored processing operations, newest first."""
 
-        records = await history_service.list(skip=skip, limit=limit)
+        records = await history_service.list(skip=skip, limit=limit, user=user)
         return EmailHistoryListResponse(
             items=[EmailHistoryResponse.from_record(record) for record in records],
             skip=skip,
@@ -123,11 +132,11 @@ def create_router(
         response_model=EmailHistoryResponse,
         tags=["Email history"],
     )
-    async def get_email_history(record_id: UUID) -> EmailHistoryResponse:
+    async def get_email_history(record_id: UUID, user: User = Depends(current_user)) -> EmailHistoryResponse:
         """Return one stored processing operation."""
 
         try:
-            record = await history_service.get(record_id)
+            record = await history_service.get(record_id, user)
         except EmailHistoryNotFoundError as error:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -141,11 +150,11 @@ def create_router(
         status_code=status.HTTP_204_NO_CONTENT,
         tags=["Email history"],
     )
-    async def delete_email_history(record_id: UUID) -> Response:
+    async def delete_email_history(record_id: UUID, user: User = Depends(current_user)) -> Response:
         """Delete one stored processing operation."""
 
         try:
-            await history_service.delete(record_id)
+            await history_service.delete(record_id, user)
         except EmailHistoryNotFoundError as error:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

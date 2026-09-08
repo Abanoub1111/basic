@@ -21,5 +21,6 @@ async def lifespan(_: FastAPI):
 app = create_app(
     container.process_email_service,
     container.email_history_service,
+    container.auth_service,
     lifespan=lifespan,
 )

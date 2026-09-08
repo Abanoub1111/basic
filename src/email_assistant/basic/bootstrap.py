@@ -1,6 +1,9 @@
 from dataclasses import dataclass
 
 from dotenv import load_dotenv
+from email_assistant.basic.application.auth import AuthService
+from email_assistant.basic.infrastructure.database.auth_repository import SqlAlchemyAuthRepository
+from email_assistant.basic.infrastructure.security import ArgonPasswordHasher, JwtTokenCodec
 
 from email_assistant.basic.application.services import (
     EmailHistoryService,
@@ -27,6 +30,7 @@ class ApplicationContainer:
     process_email_service: ProcessEmailService
     email_history_service: EmailHistoryService
     database: Database
+    auth_service: AuthService
 
 
 def build_application(
@@ -60,4 +64,7 @@ def build_application(
         ),
         email_history_service=EmailHistoryService(repository),
         database=database,
+        auth_service=AuthService(SqlAlchemyAuthRepository(database.sessions),
+                                 ArgonPasswordHasher(), JwtTokenCodec(settings.jwt_secret.get_secret_value()),
+                                 settings.access_token_minutes),
     )

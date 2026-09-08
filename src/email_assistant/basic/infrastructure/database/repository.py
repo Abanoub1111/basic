@@ -31,10 +31,11 @@ class SqlAlchemyEmailProcessingRepository(EmailProcessingRepository):
     ) -> None:
         self._sessions = sessions
 
-    async def create(self, email: Email) -> EmailProcessingRecord:
+    async def create(self, email: Email, owner_id: UUID) -> EmailProcessingRecord:
         now = datetime.now(UTC)
         row = EmailProcessingRecordRow(
             id=uuid4(),
+            owner_id=owner_id,
             status=ProcessingStatus.PROCESSING.value,
             author=email.author,
             recipient=email.recipient,
@@ -83,15 +84,19 @@ class SqlAlchemyEmailProcessingRepository(EmailProcessingRepository):
 
         return self._to_application(row)
 
-    async def get(self, record_id: UUID) -> EmailProcessingRecord | None:
+    async def get(self, record_id: UUID, owner_id: UUID | None = None) -> EmailProcessingRecord | None:
         async with self._sessions() as session:
-            row = await session.get(EmailProcessingRecordRow, record_id)
+            statement = select(EmailProcessingRecordRow).where(EmailProcessingRecordRow.id == record_id)
+            if owner_id is not None:
+                statement = statement.where(EmailProcessingRecordRow.owner_id == owner_id)
+            row = await session.scalar(statement)
             return None if row is None else self._to_application(row)
 
     async def list(
         self,
         skip: int,
         limit: int,
+        owner_id: UUID | None = None,
     ) -> list[EmailProcessingRecord]:
         statement = (
             select(EmailProcessingRecordRow)
@@ -100,15 +105,19 @@ class SqlAlchemyEmailProcessingRepository(EmailProcessingRepository):
             .limit(limit)
         )
 
+        if owner_id is not None:
+            statement = statement.where(EmailProcessingRecordRow.owner_id == owner_id)
         async with self._sessions() as session:
             rows = (await session.scalars(statement)).all()
             return [self._to_application(row) for row in rows]
 
-    async def delete(self, record_id: UUID) -> bool:
+    async def delete(self, record_id: UUID, owner_id: UUID | None = None) -> bool:
         statement = delete(EmailProcessingRecordRow).where(
             EmailProcessingRecordRow.id == record_id
         )
 
+        if owner_id is not None:
+            statement = statement.where(EmailProcessingRecordRow.owner_id == owner_id)
         async with self._sessions.begin() as session:
             result = await session.execute(statement)
 
@@ -164,6 +173,7 @@ class SqlAlchemyEmailProcessingRepository(EmailProcessingRepository):
 
         return EmailProcessingRecord(
             id=row.id,
+            owner_id=row.owner_id,
             email=email,
             status=ProcessingStatus(row.status),
             result=result,

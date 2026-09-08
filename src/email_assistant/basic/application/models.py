@@ -47,3 +47,4 @@ class EmailProcessingRecord:
     failure_message: str | None
     created_at: datetime
     updated_at: datetime
+    owner_id: UUID | None = None

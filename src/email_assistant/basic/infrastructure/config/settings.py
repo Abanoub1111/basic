@@ -23,6 +23,8 @@ class AppSettings(DatabaseSettings):
     """Validated settings loaded from environment variables or a .env file."""
 
     groq_api_key: SecretStr
+    jwt_secret: SecretStr = Field(min_length=32)
+    access_token_minutes: int = Field(default=30, ge=1, le=60)
     langsmith_api_key: SecretStr | None = None
     groq_max_concurrency: int = Field(default=3, ge=1, le=20)
 

@@ -3,6 +3,8 @@ from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from uuid import UUID
+from email_assistant.basic.domain.users import User, UserRole
+from email_assistant.basic.application.auth import AuthenticationError
 
 from email_assistant.basic.application.models import (
     EmailProcessingRecord,
@@ -113,12 +115,12 @@ class ProcessEmailService:
         self._repository = repository
         self._concurrency_limiter = asyncio.Semaphore(max_concurrency)
 
-    async def process(self, email: Email) -> ProcessEmailResult:
+    async def process(self, email: Email, user: User) -> ProcessEmailResult:
         """Classify an email and perform the appropriate action."""
 
         completed_result = None
 
-        async for event in self.process_stream(email):
+        async for event in self.process_stream(email, user):
             if isinstance(event, EmailProcessingCompleted):
                 completed_result = event.result
 
@@ -130,23 +132,27 @@ class ProcessEmailService:
     async def process_many(
         self,
         emails: Sequence[Email],
+        user: User,
     ) -> list[ProcessEmailResult]:
         """Process emails concurrently while respecting the shared limit."""
 
         return list(
             await asyncio.gather(
-                *(self.process(email) for email in emails)
+                *(self.process(email, user) for email in emails)
             )
         )
 
     async def process_stream(
         self,
         email: Email,
+        user: User,
     ) -> AsyncIterator[ProcessEmailEvent]:
         """Yield typed progress events while processing one email."""
 
+        if not user.is_active:
+            raise AuthenticationError()
         async with self._concurrency_limiter:
-            record = await self._repository.create(email)
+            record = await self._repository.create(email, user.id)
             finalized = False
 
             try:
@@ -212,19 +218,26 @@ class EmailHistoryService:
     def __init__(self, repository: EmailProcessingRepository) -> None:
         self._repository = repository
 
+    @staticmethod
+    def _owner_scope(user: User) -> UUID | None:
+        if not user.is_active:
+            raise AuthenticationError()
+        return None if user.role is UserRole.ADMIN else user.id
+
     async def list(
         self,
         skip: int,
         limit: int,
+        user: User,
     ) -> list[EmailProcessingRecord]:
-        return await self._repository.list(skip=skip, limit=limit)
+        return await self._repository.list(skip=skip, limit=limit, owner_id=self._owner_scope(user))
 
-    async def get(self, record_id: UUID) -> EmailProcessingRecord:
-        record = await self._repository.get(record_id)
+    async def get(self, record_id: UUID, user: User) -> EmailProcessingRecord:
+        record = await self._repository.get(record_id, owner_id=self._owner_scope(user))
         if record is None:
             raise EmailHistoryNotFoundError(str(record_id))
         return record
 
-    async def delete(self, record_id: UUID) -> None:
-        if not await self._repository.delete(record_id):
+    async def delete(self, record_id: UUID, user: User) -> None:
+        if not await self._repository.delete(record_id, owner_id=self._owner_scope(user)):
             raise EmailHistoryNotFoundError(str(record_id))

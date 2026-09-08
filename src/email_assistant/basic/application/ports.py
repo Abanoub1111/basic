@@ -31,7 +31,7 @@ class EmailProcessingRepository(Protocol):
     """Persistence contract required by the application layer."""
 
     @abstractmethod
-    async def create(self, email: Email) -> EmailProcessingRecord:
+    async def create(self, email: Email, owner_id: UUID) -> EmailProcessingRecord:
         """Store a new processing operation."""
         ...
 
@@ -54,7 +54,7 @@ class EmailProcessingRepository(Protocol):
         ...
 
     @abstractmethod
-    async def get(self, record_id: UUID) -> EmailProcessingRecord | None:
+    async def get(self, record_id: UUID, owner_id: UUID | None = None) -> EmailProcessingRecord | None:
         """Return one stored operation, if it exists."""
         ...
 
@@ -63,11 +63,12 @@ class EmailProcessingRepository(Protocol):
         self,
         skip: int,
         limit: int,
+        owner_id: UUID | None = None,
     ) -> list[EmailProcessingRecord]:
         """Return stored operations newest first."""
         ...
 
     @abstractmethod
-    async def delete(self, record_id: UUID) -> bool:
+    async def delete(self, record_id: UUID, owner_id: UUID | None = None) -> bool:
         """Delete one operation and report whether it existed."""
         ...

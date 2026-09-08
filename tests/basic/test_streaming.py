@@ -1,3 +1,4 @@
+from tests.basic.fakes import TEST_USER, FakeAuthService
 import json
 import unittest
 from typing import cast
@@ -40,13 +41,13 @@ async def connected() -> bool:
 
 
 class FailingStreamService:
-    async def process_stream(self, email: Email):
+    async def process_stream(self, email: Email, user):
         yield EmailProcessingStarted(record_id=uuid4())
         raise RuntimeError("Provider failure")
 
 
 class SuccessfulStreamService:
-    async def process_stream(self, email: Email):
+    async def process_stream(self, email: Email, user):
         record_id = uuid4()
         triage = TriageResult(
             classification=TriageClassification.IGNORE,
@@ -89,7 +90,7 @@ class SseEncodingTests(unittest.TestCase):
     def test_all_email_endpoints_remain_registered(self) -> None:
         service = cast(ProcessEmailService, object())
         history = cast(EmailHistoryService, object())
-        paths = create_app(service, history).openapi()["paths"]
+        paths = create_app(service, history, FakeAuthService()).openapi()["paths"]
 
         self.assertIn("/emails/process", paths)
         self.assertIn("/emails/process/batch", paths)
@@ -98,10 +99,11 @@ class SseEncodingTests(unittest.TestCase):
     def test_stream_endpoint_returns_event_stream_content(self) -> None:
         service = cast(ProcessEmailService, SuccessfulStreamService())
         history = cast(EmailHistoryService, object())
-        client = TestClient(create_app(service, history))
+        client = TestClient(create_app(service, history, FakeAuthService()))
 
         response = client.post(
             "/emails/process/stream",
+            headers={"Authorization": "Bearer test"},
             json={
                 "author": "newsletter@example.com",
                 "to": "assistant@example.com",
@@ -129,6 +131,7 @@ class SseStreamingTests(unittest.IsolatedAsyncioTestCase):
                 service,
                 make_email(),
                 connected,
+                TEST_USER,
             )
         ]
 
@@ -150,6 +153,7 @@ class SseStreamingTests(unittest.IsolatedAsyncioTestCase):
                 service,
                 make_email(),
                 disconnected,
+                TEST_USER,
             )
         ]
 
