@@ -11,12 +11,14 @@ from email_assistant.basic.application.services import (
     ProcessEmailEventType,
     ProcessingAction,
 )
+from email_assistant.basic.application.models import ProcessingStatus
 from email_assistant.basic.domain.models import (
     Email,
     EmailReply,
     TriageClassification,
     TriageResult,
 )
+from tests.basic.fakes import InMemoryEmailProcessingRepository
 
 
 class TrackingClassifier:
@@ -70,10 +72,30 @@ def make_email(index: int) -> Email:
 
 
 class ProcessEmailServiceTests(unittest.IsolatedAsyncioTestCase):
+    async def test_interrupted_stream_is_stored_as_failed(self) -> None:
+        repository = InMemoryEmailProcessingRepository()
+        service = ProcessEmailService(
+            TrackingClassifier(TriageClassification.RESPOND),
+            RecordingResponder(),
+            repository,
+        )
+        stream = service.process_stream(make_email(1))
+
+        started = await anext(stream)
+        await stream.aclose()
+
+        record = repository.records[started.record_id]
+        self.assertEqual(record.status, ProcessingStatus.FAILED)
+        self.assertEqual(
+            record.failure_message,
+            "Email processing was interrupted.",
+        )
+
     async def test_response_stream_emits_events_in_order(self) -> None:
         service = ProcessEmailService(
             TrackingClassifier(TriageClassification.RESPOND),
             RecordingResponder(),
+            InMemoryEmailProcessingRepository(),
         )
 
         events = [
@@ -104,6 +126,7 @@ class ProcessEmailServiceTests(unittest.IsolatedAsyncioTestCase):
             service = ProcessEmailService(
                 TrackingClassifier(classification),
                 RecordingResponder(),
+                InMemoryEmailProcessingRepository(),
             )
 
             events = [
@@ -123,7 +146,11 @@ class ProcessEmailServiceTests(unittest.IsolatedAsyncioTestCase):
     async def test_process_awaits_the_responder(self) -> None:
         classifier = TrackingClassifier(TriageClassification.RESPOND)
         responder = RecordingResponder()
-        service = ProcessEmailService(classifier, responder)
+        service = ProcessEmailService(
+            classifier,
+            responder,
+            InMemoryEmailProcessingRepository(),
+        )
         email = make_email(1)
 
         result = await service.process(email)
@@ -139,6 +166,7 @@ class ProcessEmailServiceTests(unittest.IsolatedAsyncioTestCase):
         service = ProcessEmailService(
             classifier,
             RecordingResponder(),
+            InMemoryEmailProcessingRepository(),
             max_concurrency=2,
         )
         emails = [make_email(index) for index in range(5)]
@@ -157,6 +185,7 @@ class ProcessEmailServiceTests(unittest.IsolatedAsyncioTestCase):
             ProcessEmailService(
                 TrackingClassifier(TriageClassification.IGNORE),
                 RecordingResponder(),
+                InMemoryEmailProcessingRepository(),
                 max_concurrency=0,
             )
 

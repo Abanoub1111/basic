@@ -1,7 +1,11 @@
 from abc import abstractmethod
-
 from typing import Protocol
+from uuid import UUID
 
+from email_assistant.basic.application.models import (
+    EmailProcessingRecord,
+    ProcessEmailResult,
+)
 from email_assistant.basic.domain.models import Email, EmailReply, TriageResult
 
 
@@ -20,4 +24,50 @@ class EmailResponder(Protocol):
     @abstractmethod
     async def respond(self, email: Email) -> EmailReply:
         """Perform the actions required to respond to an email."""
+        ...
+
+
+class EmailProcessingRepository(Protocol):
+    """Persistence contract required by the application layer."""
+
+    @abstractmethod
+    async def create(self, email: Email) -> EmailProcessingRecord:
+        """Store a new processing operation."""
+        ...
+
+    @abstractmethod
+    async def complete(
+        self,
+        record_id: UUID,
+        result: ProcessEmailResult,
+    ) -> EmailProcessingRecord:
+        """Store the successful result of an operation."""
+        ...
+
+    @abstractmethod
+    async def fail(
+        self,
+        record_id: UUID,
+        failure_message: str,
+    ) -> EmailProcessingRecord:
+        """Mark an operation as failed."""
+        ...
+
+    @abstractmethod
+    async def get(self, record_id: UUID) -> EmailProcessingRecord | None:
+        """Return one stored operation, if it exists."""
+        ...
+
+    @abstractmethod
+    async def list(
+        self,
+        skip: int,
+        limit: int,
+    ) -> list[EmailProcessingRecord]:
+        """Return stored operations newest first."""
+        ...
+
+    @abstractmethod
+    async def delete(self, record_id: UUID) -> bool:
+        """Delete one operation and report whether it existed."""
         ...

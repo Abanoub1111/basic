@@ -2,8 +2,8 @@ from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class AppSettings(BaseSettings):
-    """Validated settings loaded from environment variables or a .env file."""
+class DatabaseSettings(BaseSettings):
+    """Database settings usable independently by Alembic."""
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -11,6 +11,16 @@ class AppSettings(BaseSettings):
         case_sensitive=False,
         extra="ignore",
     )
+
+    database_url: SecretStr = SecretStr(
+        "postgresql+asyncpg://email_assistant:email_assistant@localhost:5433/"
+        "email_assistant"
+    )
+    database_echo: bool = False
+
+
+class AppSettings(DatabaseSettings):
+    """Validated settings loaded from environment variables or a .env file."""
 
     groq_api_key: SecretStr
     langsmith_api_key: SecretStr | None = None

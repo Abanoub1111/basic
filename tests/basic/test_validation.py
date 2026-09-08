@@ -3,7 +3,7 @@ import unittest
 from unittest.mock import patch
 
 from pydantic import ValidationError
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.graph import END
 
 from email_assistant.basic.infrastructure.config import AppSettings
@@ -145,6 +145,38 @@ class LangGraphRoutingTests(unittest.TestCase):
         )
 
         self.assertEqual(route, "tools")
+
+    def test_write_email_tool_result_ends_the_graph(self) -> None:
+        route = LangGraphEmailResponder._route_after_tools(
+            {
+                "messages": [
+                    AIMessage(content=""),
+                    ToolMessage(
+                        content="Email sent.",
+                        tool_call_id="write-1",
+                        name="write_email",
+                    ),
+                ]
+            }
+        )
+
+        self.assertEqual(route, END)
+
+    def test_support_tool_result_returns_to_agent(self) -> None:
+        route = LangGraphEmailResponder._route_after_tools(
+            {
+                "messages": [
+                    AIMessage(content=""),
+                    ToolMessage(
+                        content="Available at 2 PM.",
+                        tool_call_id="calendar-1",
+                        name="check_calendar_availability",
+                    ),
+                ]
+            }
+        )
+
+        self.assertEqual(route, "agent")
 
     def test_non_ai_message_ends_the_graph(self) -> None:
         route = LangGraphEmailResponder._route_after_model(

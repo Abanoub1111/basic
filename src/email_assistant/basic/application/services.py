@@ -2,9 +2,16 @@ import asyncio
 from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
+from uuid import UUID
 
+from email_assistant.basic.application.models import (
+    EmailProcessingRecord,
+    ProcessEmailResult,
+    ProcessingAction,
+)
 from email_assistant.basic.application.ports import (
     EmailClassifier,
+    EmailProcessingRepository,
     EmailResponder,
 )
 from email_assistant.basic.domain.models import (
@@ -13,23 +20,6 @@ from email_assistant.basic.domain.models import (
     TriageClassification,
     TriageResult,
 )
-
-
-class ProcessingAction(str, Enum):
-    """Action taken after an email has been classified."""
-
-    RESPONDED = "responded"
-    NOTIFICATION_REQUIRED = "notification_required"
-    IGNORED = "ignored"
-
-
-@dataclass(frozen=True)
-class ProcessEmailResult:
-    """Result returned after processing an email."""
-
-    triage: TriageResult
-    action: ProcessingAction
-    reply: EmailReply | None = None
 
 
 class ProcessEmailEventType(str, Enum):
@@ -46,6 +36,7 @@ class ProcessEmailEventType(str, Enum):
 class EmailProcessingStarted:
     """Signal that processing has acquired a concurrency slot."""
 
+    record_id: UUID
     event_type: ProcessEmailEventType = field(
         default=ProcessEmailEventType.STARTED,
         init=False,
@@ -111,6 +102,7 @@ class ProcessEmailService:
         self,
         classifier: EmailClassifier,
         responder: EmailResponder,
+        repository: EmailProcessingRepository,
         max_concurrency: int = 3,
     ) -> None:
         if max_concurrency < 1:
@@ -118,6 +110,7 @@ class ProcessEmailService:
 
         self._classifier = classifier
         self._responder = responder
+        self._repository = repository
         self._concurrency_limiter = asyncio.Semaphore(max_concurrency)
 
     async def process(self, email: Email) -> ProcessEmailResult:
@@ -153,35 +146,85 @@ class ProcessEmailService:
         """Yield typed progress events while processing one email."""
 
         async with self._concurrency_limiter:
-            yield EmailProcessingStarted()
+            record = await self._repository.create(email)
+            finalized = False
 
-            triage_result = await self._classifier.classify(email)
-            yield EmailClassified(triage=triage_result)
+            try:
+                yield EmailProcessingStarted(record_id=record.id)
+                triage_result = await self._classifier.classify(email)
+                yield EmailClassified(triage=triage_result)
 
-            reply = None
+                reply = None
 
-            if triage_result.classification is TriageClassification.RESPOND:
-                yield EmailResponseStarted()
-                reply = await self._responder.respond(email)
-                yield EmailReplyCreated(reply=reply)
-                action = ProcessingAction.RESPONDED
+                if triage_result.classification is TriageClassification.RESPOND:
+                    yield EmailResponseStarted()
+                    reply = await self._responder.respond(email)
+                    yield EmailReplyCreated(reply=reply)
+                    action = ProcessingAction.RESPONDED
 
-            elif triage_result.classification is TriageClassification.NOTIFY:
-                action = ProcessingAction.NOTIFICATION_REQUIRED
+                elif triage_result.classification is TriageClassification.NOTIFY:
+                    action = ProcessingAction.NOTIFICATION_REQUIRED
 
-            elif triage_result.classification is TriageClassification.IGNORE:
-                action = ProcessingAction.IGNORED
+                elif triage_result.classification is TriageClassification.IGNORE:
+                    action = ProcessingAction.IGNORED
 
-            else:
-                raise ValueError(
-                    "Unsupported classification: "
-                    f"{triage_result.classification}"
-                )
+                else:
+                    raise ValueError(
+                        "Unsupported classification: "
+                        f"{triage_result.classification}"
+                    )
 
-            yield EmailProcessingCompleted(
-                result=ProcessEmailResult(
+                result = ProcessEmailResult(
+                    record_id=record.id,
                     triage=triage_result,
                     action=action,
                     reply=reply,
                 )
-            )
+                await self._repository.complete(record.id, result)
+                finalized = True
+                yield EmailProcessingCompleted(result=result)
+            except Exception:
+                try:
+                    await self._repository.fail(
+                        record.id,
+                        "Email processing failed.",
+                    )
+                finally:
+                    finalized = True
+                raise
+            finally:
+                if not finalized:
+                    await asyncio.shield(
+                        self._repository.fail(
+                            record.id,
+                            "Email processing was interrupted.",
+                        )
+                    )
+
+
+class EmailHistoryNotFoundError(LookupError):
+    """Raised when a requested history record does not exist."""
+
+
+class EmailHistoryService:
+    """Read and delete stored email-processing history."""
+
+    def __init__(self, repository: EmailProcessingRepository) -> None:
+        self._repository = repository
+
+    async def list(
+        self,
+        skip: int,
+        limit: int,
+    ) -> list[EmailProcessingRecord]:
+        return await self._repository.list(skip=skip, limit=limit)
+
+    async def get(self, record_id: UUID) -> EmailProcessingRecord:
+        record = await self._repository.get(record_id)
+        if record is None:
+            raise EmailHistoryNotFoundError(str(record_id))
+        return record
+
+    async def delete(self, record_id: UUID) -> None:
+        if not await self._repository.delete(record_id):
+            raise EmailHistoryNotFoundError(str(record_id))

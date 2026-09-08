@@ -7,3 +7,6 @@ pydantic>=2
 pydantic-settings>=2
 python-dotenv
 uvicorn
+alembic>=1.13,<2
+asyncpg>=0.30,<1
+sqlalchemy>=2,<3

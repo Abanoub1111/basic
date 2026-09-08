@@ -1,10 +1,14 @@
+from datetime import datetime
 from typing import Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from email_assistant.basic.application.services import (
+from email_assistant.basic.application.models import (
+    EmailProcessingRecord,
     ProcessEmailResult,
     ProcessingAction,
+    ProcessingStatus,
 )
 from email_assistant.basic.domain.models import (
     Email,
@@ -63,6 +67,7 @@ class StreamStartedData(ApiModel):
     """Payload sent when email processing starts."""
 
     stage: Literal["started"] = "started"
+    record_id: UUID
 
 
 class StreamClassifiedData(ApiModel):
@@ -82,6 +87,7 @@ class StreamCompletedData(ApiModel):
     """Payload sent when email processing completes."""
 
     action: ProcessingAction
+    record_id: UUID
 
 
 class StreamErrorData(ApiModel):
@@ -93,6 +99,7 @@ class StreamErrorData(ApiModel):
 class ProcessEmailResponse(ApiModel):
     """JSON returned after processing an email."""
 
+    record_id: UUID
     classification: TriageClassification
     reasoning: str = Field(min_length=1, max_length=2_000)
     action: ProcessingAction
@@ -106,6 +113,7 @@ class ProcessEmailResponse(ApiModel):
         """Convert an application result into an HTTP response."""
 
         return cls(
+            record_id=result.record_id,
             classification=result.triage.classification,
             reasoning=result.triage.reasoning,
             action=result.action,
@@ -146,6 +154,50 @@ class ProcessEmailsBatchResponse(ApiModel):
                 for result in results
             ]
         )
+
+
+class EmailHistoryResponse(ApiModel):
+    """Stored state and result of one processing operation."""
+
+    id: UUID
+    status: ProcessingStatus
+    email: ProcessEmailRequest
+    result: ProcessEmailResponse | None
+    failure_message: str | None
+    created_at: datetime
+    updated_at: datetime
+
+    @classmethod
+    def from_record(
+        cls,
+        record: EmailProcessingRecord,
+    ) -> "EmailHistoryResponse":
+        return cls(
+            id=record.id,
+            status=record.status,
+            email=ProcessEmailRequest(
+                author=record.email.author,
+                to=record.email.recipient,
+                subject=record.email.subject,
+                email_thread=record.email.thread,
+            ),
+            result=(
+                ProcessEmailResponse.from_result(record.result)
+                if record.result is not None
+                else None
+            ),
+            failure_message=record.failure_message,
+            created_at=record.created_at,
+            updated_at=record.updated_at,
+        )
+
+
+class EmailHistoryListResponse(ApiModel):
+    """Paginated collection of stored processing operations."""
+
+    items: list[EmailHistoryResponse]
+    skip: int
+    limit: int
 
 
 class HealthResponse(ApiModel):

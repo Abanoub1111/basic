@@ -10,15 +10,19 @@ Bootstrap            Person who opens the restaurant and connects everything
 |---|---|---|
 | `domain/models.py` | Core email concepts | Email and classification definitions |
 | `application/ports.py` | Contracts for things the application needs | “I need something capable of classifying emails” |
-| `application/services.py` | Coordinates the use case, typed progress events, and bounded concurrency | Classify, then respond/notify/ignore for one or many emails |
+| `application/models.py` | Application-level processing and persistence models | Result, status, action, and stored processing record |
+| `application/services.py` | Coordinates use cases, typed progress events, persistence, and bounded concurrency | Classify, respond/notify/ignore, and manage email history |
 | `infrastructure/groq_classifier.py` | Implements classification using Groq | `init_chat_model()` and `with_structured_output()` |
 | `infrastructure/langgraph_response_agent.py` | Implements responses through a LangGraph workflow | Model node, conditional routing, and `ToolNode` execution |
+| `infrastructure/database/` | Implements the persistence port with async SQLAlchemy | Engine, ORM model, sessions, and PostgreSQL repository |
 | `interfaces/http/schemas.py` | Validates HTTP JSON | FastAPI/Pydantic request and response models |
 | `interfaces/http/routes.py` | Defines URLs | Regular, batch, and SSE email-processing endpoints |
 | `interfaces/http/streaming.py` | Maps application events to SSE | Serialize progress, completion, and safe error events |
 | `interfaces/http/app.py` | Creates a FastAPI application from an injected service | `app = FastAPI()` |
 | `bootstrap.py` | Constructs and connects real objects | Connect Groq implementations and tools to application services |
 | `main.py` | Starts the application composition | Build the service and expose the configured FastAPI `app` |
+| `alembic/` | Evolves the database schema safely | Versioned database migrations |
+| `compose.yaml` | Runs the local development database | PostgreSQL 16 container and persistent volume |
 | `__init__.py` | Marks a directory as a Python package | Usually stays empty |
 
 

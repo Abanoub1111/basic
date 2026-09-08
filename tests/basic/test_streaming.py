@@ -1,10 +1,12 @@
 import json
 import unittest
 from typing import cast
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
 from email_assistant.basic.application.services import (
+    EmailHistoryService,
     EmailClassified,
     EmailProcessingCompleted,
     EmailProcessingStarted,
@@ -39,20 +41,22 @@ async def connected() -> bool:
 
 class FailingStreamService:
     async def process_stream(self, email: Email):
-        yield EmailProcessingStarted()
+        yield EmailProcessingStarted(record_id=uuid4())
         raise RuntimeError("Provider failure")
 
 
 class SuccessfulStreamService:
     async def process_stream(self, email: Email):
+        record_id = uuid4()
         triage = TriageResult(
             classification=TriageClassification.IGNORE,
             reasoning="No action is required.",
         )
-        yield EmailProcessingStarted()
+        yield EmailProcessingStarted(record_id=record_id)
         yield EmailClassified(triage=triage)
         yield EmailProcessingCompleted(
             result=ProcessEmailResult(
+                record_id=record_id,
                 triage=triage,
                 action=ProcessingAction.IGNORED,
             )
@@ -84,7 +88,8 @@ class SseEncodingTests(unittest.TestCase):
 
     def test_all_email_endpoints_remain_registered(self) -> None:
         service = cast(ProcessEmailService, object())
-        paths = create_app(service).openapi()["paths"]
+        history = cast(EmailHistoryService, object())
+        paths = create_app(service, history).openapi()["paths"]
 
         self.assertIn("/emails/process", paths)
         self.assertIn("/emails/process/batch", paths)
@@ -92,7 +97,8 @@ class SseEncodingTests(unittest.TestCase):
 
     def test_stream_endpoint_returns_event_stream_content(self) -> None:
         service = cast(ProcessEmailService, SuccessfulStreamService())
-        client = TestClient(create_app(service))
+        history = cast(EmailHistoryService, object())
+        client = TestClient(create_app(service, history))
 
         response = client.post(
             "/emails/process/stream",
@@ -126,7 +132,7 @@ class SseStreamingTests(unittest.IsolatedAsyncioTestCase):
             )
         ]
 
-        self.assertEqual(events[0], "event: started\ndata: {\"stage\":\"started\"}\n\n")
+        self.assertTrue(events[0].startswith("event: started\ndata: "))
         self.assertEqual(
             events[1],
             "event: error\ndata: {\"message\":\"Email processing failed.\"}\n\n",

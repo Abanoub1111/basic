@@ -7,6 +7,7 @@ from langchain_core.messages import (
     BaseMessage,
     HumanMessage,
     SystemMessage,
+    ToolMessage,
 )
 from langchain_core.tools import BaseTool
 from langgraph.errors import GraphRecursionError
@@ -94,7 +95,14 @@ class LangGraphEmailResponder(EmailResponder):
                 END: END,
             },
         )
-        graph_builder.add_edge("tools", "agent")
+        graph_builder.add_conditional_edges(
+            "tools",
+            self._route_after_tools,
+            {
+                "agent": "agent",
+                END: END,
+            },
+        )
 
         self._graph = graph_builder.compile()
 
@@ -131,6 +139,24 @@ class LangGraphEmailResponder(EmailResponder):
             return "tools"
 
         return END
+
+    @staticmethod
+    def _route_after_tools(
+        state: MessagesState,
+    ) -> Literal["agent", "__end__"]:
+        """Finish after drafting a reply; continue after support tools."""
+
+        for message in reversed(state["messages"]):
+            if isinstance(message, AIMessage):
+                break
+
+            if (
+                isinstance(message, ToolMessage)
+                and message.name == "write_email"
+            ):
+                return END
+
+        return "agent"
 
     async def respond(self, email: Email) -> EmailReply:
         """Use the model and available tools to respond to an email."""

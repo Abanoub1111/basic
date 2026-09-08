@@ -37,7 +37,7 @@ def encode_process_email_event(event: ProcessEmailEvent) -> str:
     """Map an application event to its HTTP SSE representation."""
 
     if isinstance(event, EmailProcessingStarted):
-        payload: BaseModel = StreamStartedData()
+        payload: BaseModel = StreamStartedData(record_id=event.record_id)
     elif isinstance(event, EmailClassified):
         payload = StreamClassifiedData(
             classification=event.triage.classification,
@@ -48,7 +48,10 @@ def encode_process_email_event(event: ProcessEmailEvent) -> str:
     elif isinstance(event, EmailReplyCreated):
         payload = EmailReplyResponse.from_domain(event.reply)
     elif isinstance(event, EmailProcessingCompleted):
-        payload = StreamCompletedData(action=event.result.action)
+        payload = StreamCompletedData(
+            action=event.result.action,
+            record_id=event.result.record_id,
+        )
     else:
         raise TypeError(f"Unsupported processing event: {type(event)!r}")
 

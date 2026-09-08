@@ -51,7 +51,6 @@ When handling emails, follow these steps:
    - Today's date is """ + datetime.now().strftime("%Y-%m-%d") + """ - use this for scheduling meetings accurately
 6. If you scheduled a meeting, then draft a short response email using the write_email tool
 7. After using the write_email tool, the task is complete
-8. If you have sent the email, then use the Done tool to indicate that the task is complete
 </ Instructions >
 
 < Background >

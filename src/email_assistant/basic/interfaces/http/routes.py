@@ -1,8 +1,16 @@
-from fastapi import APIRouter, Request
+from uuid import UUID
+
+from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 from fastapi.responses import StreamingResponse
 
-from email_assistant.basic.application.services import ProcessEmailService
+from email_assistant.basic.application.services import (
+    EmailHistoryNotFoundError,
+    EmailHistoryService,
+    ProcessEmailService,
+)
 from email_assistant.basic.interfaces.http.schemas import (
+    EmailHistoryListResponse,
+    EmailHistoryResponse,
     HealthResponse,
     ProcessEmailRequest,
     ProcessEmailResponse,
@@ -15,6 +23,7 @@ from email_assistant.basic.interfaces.http.streaming import (
 
 def create_router(
     service: ProcessEmailService,  # Dependency injection at the HTTP boundary.
+    history_service: EmailHistoryService,
 ) -> APIRouter:
     """Create HTTP routes using the provided application service."""
 
@@ -90,5 +99,59 @@ def create_router(
                 "X-Accel-Buffering": "no",
             },
         )
+
+    @router.get(
+        "/emails/history",
+        response_model=EmailHistoryListResponse,
+        tags=["Email history"],
+    )
+    async def list_email_history(
+        skip: int = Query(default=0, ge=0),
+        limit: int = Query(default=20, ge=1, le=100),
+    ) -> EmailHistoryListResponse:
+        """Return stored processing operations, newest first."""
+
+        records = await history_service.list(skip=skip, limit=limit)
+        return EmailHistoryListResponse(
+            items=[EmailHistoryResponse.from_record(record) for record in records],
+            skip=skip,
+            limit=limit,
+        )
+
+    @router.get(
+        "/emails/history/{record_id}",
+        response_model=EmailHistoryResponse,
+        tags=["Email history"],
+    )
+    async def get_email_history(record_id: UUID) -> EmailHistoryResponse:
+        """Return one stored processing operation."""
+
+        try:
+            record = await history_service.get(record_id)
+        except EmailHistoryNotFoundError as error:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Email processing record was not found.",
+            ) from error
+
+        return EmailHistoryResponse.from_record(record)
+
+    @router.delete(
+        "/emails/history/{record_id}",
+        status_code=status.HTTP_204_NO_CONTENT,
+        tags=["Email history"],
+    )
+    async def delete_email_history(record_id: UUID) -> Response:
+        """Delete one stored processing operation."""
+
+        try:
+            await history_service.delete(record_id)
+        except EmailHistoryNotFoundError as error:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Email processing record was not found.",
+            ) from error
+
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     return router

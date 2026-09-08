@@ -1,7 +1,16 @@
+from dataclasses import dataclass
+
 from dotenv import load_dotenv
 
-from email_assistant.basic.application.services import ProcessEmailService
+from email_assistant.basic.application.services import (
+    EmailHistoryService,
+    ProcessEmailService,
+)
 from email_assistant.basic.infrastructure.config import AppSettings
+from email_assistant.basic.infrastructure.database import (
+    Database,
+    SqlAlchemyEmailProcessingRepository,
+)
 from email_assistant.basic.infrastructure.groq_classifier import (
     GroqEmailClassifier,
 )
@@ -11,10 +20,19 @@ from email_assistant.basic.infrastructure.langgraph_response_agent import (
 from email_assistant.tools import get_tools
 
 
-def build_process_email_service(
+@dataclass(frozen=True)
+class ApplicationContainer:
+    """Objects shared for the lifetime of the running application."""
+
+    process_email_service: ProcessEmailService
+    email_history_service: EmailHistoryService
+    database: Database
+
+
+def build_application(
     settings: AppSettings | None = None,
-) -> ProcessEmailService:
-    """Build the email-processing service with real dependencies."""
+) -> ApplicationContainer:
+    """Build application services and their real dependencies."""
 
     if settings is None:
         load_dotenv()
@@ -27,9 +45,19 @@ def build_process_email_service(
         api_key=groq_api_key,
         tools=get_tools(),
     )
+    database = Database(
+        settings.database_url.get_secret_value(),
+        echo=settings.database_echo,
+    )
+    repository = SqlAlchemyEmailProcessingRepository(database.sessions)
 
-    return ProcessEmailService(
-        classifier=classifier,
-        responder=responder,
-        max_concurrency=settings.groq_max_concurrency,
+    return ApplicationContainer(
+        process_email_service=ProcessEmailService(
+            classifier=classifier,
+            responder=responder,
+            repository=repository,
+            max_concurrency=settings.groq_max_concurrency,
+        ),
+        email_history_service=EmailHistoryService(repository),
+        database=database,
     )
