@@ -1,6 +1,6 @@
 import os
 import unittest
-from datetime import UTC, datetime, timedelta
+from datetime import timezone, datetime, timedelta
 from uuid import uuid4
 
 from email_assistant.basic.application.auth import AuthenticationError, Session
@@ -12,10 +12,10 @@ from pydantic import ValidationError
 class TokenTests(unittest.TestCase):
     def test_expired_and_wrongly_signed_tokens_are_rejected(self):
         codec = JwtTokenCodec("a" * 48)
-        expired = Session(uuid4(), uuid4(), datetime.now(UTC) - timedelta(seconds=10))
+        expired = Session(uuid4(), uuid4(), datetime.now(timezone.utc) - timedelta(seconds=10))
         with self.assertRaises(AuthenticationError):
             codec.decode(codec.encode(expired))
-        valid = Session(uuid4(), uuid4(), datetime.now(UTC) + timedelta(minutes=5))
+        valid = Session(uuid4(), uuid4(), datetime.now(timezone.utc) + timedelta(minutes=5))
         with self.assertRaises(AuthenticationError):
             codec.decode(JwtTokenCodec("b" * 48).encode(valid))
 
