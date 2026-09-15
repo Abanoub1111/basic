@@ -38,6 +38,6 @@ class JwtTokenCodec:
                               issuer=self._issuer, audience=self._audience,
                               options={"require": ["sub", "jti", "exp", "iat", "iss", "aud"]})
             return Session(UUID(data["jti"]), UUID(data["sub"]),
-                           datetime.fromtimestamp(data["exp"], UTC))
+                           datetime.fromtimestamp(data["exp"], timezone.utc))
         except (jwt.InvalidTokenError, ValueError, TypeError, OverflowError) as error:
             raise AuthenticationError() from error
