@@ -71,7 +71,7 @@ class LangGraphEmailResponder(EmailResponder):
 
         self._model_with_tools = model.bind_tools(
             self._tools,
-            tool_choice="any",
+            tool_choice="auto",
         )
 
         self._system_message = SystemMessage(

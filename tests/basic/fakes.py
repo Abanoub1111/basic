@@ -1,5 +1,5 @@
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import timezone, datetime
 from uuid import UUID, uuid4
 
 from email_assistant.basic.application.models import (
@@ -17,7 +17,7 @@ class InMemoryEmailProcessingRepository:
         self.records: dict[UUID, EmailProcessingRecord] = {}
 
     async def create(self, email: Email) -> EmailProcessingRecord:
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         record = EmailProcessingRecord(
             id=uuid4(),
             email=email,
@@ -39,7 +39,7 @@ class InMemoryEmailProcessingRepository:
             self.records[record_id],
             status=ProcessingStatus.COMPLETED,
             result=result,
-            updated_at=datetime.now(UTC),
+            updated_at=datetime.now(timezone.utc),
         )
         self.records[record_id] = record
         return record
@@ -53,7 +53,7 @@ class InMemoryEmailProcessingRepository:
             self.records[record_id],
             status=ProcessingStatus.FAILED,
             failure_message=failure_message,
-            updated_at=datetime.now(UTC),
+            updated_at=datetime.now(timezone.utc),
         )
         self.records[record_id] = record
         return record
