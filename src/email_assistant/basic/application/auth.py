@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import timezone, datetime, timedelta
 from typing import Protocol
 from uuid import UUID, uuid4
 
@@ -71,7 +71,7 @@ class AuthService:
         if not valid or not credentials.user.is_active:
             raise AuthenticationError()
         session = Session(uuid4(), credentials.user.id,
-                          datetime.now(UTC) + timedelta(minutes=self.lifetime_minutes))
+                          datetime.now(timezone.utc) + timedelta(minutes=self.lifetime_minutes))
         await self.repository.create_session(session)
         return self.tokens.encode(session)
 

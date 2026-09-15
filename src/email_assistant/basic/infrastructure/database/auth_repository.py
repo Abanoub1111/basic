@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import timezone, datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import select, update
@@ -25,7 +25,7 @@ class SqlAlchemyAuthRepository:
 
     async def create_user(self, email: str, password_hash: str, role: UserRole) -> User:
         row = UserRow(id=uuid4(), email=email, password_hash=password_hash,
-                      role=role.value, is_active=True, created_at=datetime.now(UTC))
+                      role=role.value, is_active=True, created_at=datetime.now(timezone.utc))
         try:
             async with self._sessions.begin() as db:
                 db.add(row)
@@ -36,12 +36,12 @@ class SqlAlchemyAuthRepository:
     async def create_session(self, session: Session) -> None:
         async with self._sessions.begin() as db:
             db.add(SessionRow(id=session.id, user_id=session.user_id,
-                              expires_at=session.expires_at, created_at=datetime.now(UTC)))
+                              expires_at=session.expires_at, created_at=datetime.now(timezone.utc)))
 
     async def get_session_user(self, session: Session) -> User | None:
         statement = select(UserRow).join(SessionRow, SessionRow.user_id == UserRow.id).where(
             SessionRow.id == session.id, SessionRow.user_id == session.user_id,
-            SessionRow.revoked_at.is_(None), SessionRow.expires_at > datetime.now(UTC),
+            SessionRow.revoked_at.is_(None), SessionRow.expires_at > datetime.now(timezone.utc),
         )
         async with self._sessions() as db:
             row = await db.scalar(statement)
@@ -50,4 +50,4 @@ class SqlAlchemyAuthRepository:
     async def revoke_session(self, session_id: UUID) -> None:
         async with self._sessions.begin() as db:
             await db.execute(update(SessionRow).where(SessionRow.id == session_id)
-                             .values(revoked_at=datetime.now(UTC)))
+                             .values(revoked_at=datetime.now(timezone.utc)))

@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import timezone, datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import delete, select
@@ -32,7 +32,7 @@ class SqlAlchemyEmailProcessingRepository(EmailProcessingRepository):
         self._sessions = sessions
 
     async def create(self, email: Email, owner_id: UUID) -> EmailProcessingRecord:
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         row = EmailProcessingRecordRow(
             id=uuid4(),
             owner_id=owner_id,
@@ -62,7 +62,7 @@ class SqlAlchemyEmailProcessingRepository(EmailProcessingRepository):
             row.reasoning = result.triage.reasoning
             row.action = result.action.value
             row.failure_message = None
-            row.updated_at = datetime.now(UTC)
+            row.updated_at = datetime.now(timezone.utc)
 
             if result.reply is not None:
                 row.reply_recipient = result.reply.recipient
@@ -80,7 +80,7 @@ class SqlAlchemyEmailProcessingRepository(EmailProcessingRepository):
             row = await self._require_row(session, record_id)
             row.status = ProcessingStatus.FAILED.value
             row.failure_message = failure_message
-            row.updated_at = datetime.now(UTC)
+            row.updated_at = datetime.now(timezone.utc)
 
         return self._to_application(row)
 
