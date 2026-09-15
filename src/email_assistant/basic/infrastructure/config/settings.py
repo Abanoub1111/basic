@@ -27,6 +27,9 @@ class AppSettings(DatabaseSettings):
     access_token_minutes: int = Field(default=30, ge=1, le=60)
     langsmith_api_key: SecretStr | None = None
     groq_max_concurrency: int = Field(default=3, ge=1, le=20)
+    emails_per_minute: int = Field(default=20, ge=1)
+    login_ip_per_minute: int = Field(default=10, ge=1)
+    login_email_per_minute: int = Field(default=5, ge=1)
 
     @field_validator("groq_api_key", "langsmith_api_key")
     @classmethod

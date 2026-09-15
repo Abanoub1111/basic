@@ -1,4 +1,6 @@
 from tests.basic.fakes import TEST_USER, FakeAuthService
+from email_assistant.basic.application.usage import UsageLimits
+from email_assistant.basic.infrastructure.usage_counter import InMemoryUsageCounter
 import json
 import unittest
 from typing import cast
@@ -90,7 +92,7 @@ class SseEncodingTests(unittest.TestCase):
     def test_all_email_endpoints_remain_registered(self) -> None:
         service = cast(ProcessEmailService, object())
         history = cast(EmailHistoryService, object())
-        paths = create_app(service, history, FakeAuthService()).openapi()["paths"]
+        paths = create_app(service, history, FakeAuthService(), UsageLimits(InMemoryUsageCounter())).openapi()["paths"]
 
         self.assertIn("/emails/process", paths)
         self.assertIn("/emails/process/batch", paths)
@@ -99,7 +101,7 @@ class SseEncodingTests(unittest.TestCase):
     def test_stream_endpoint_returns_event_stream_content(self) -> None:
         service = cast(ProcessEmailService, SuccessfulStreamService())
         history = cast(EmailHistoryService, object())
-        client = TestClient(create_app(service, history, FakeAuthService()))
+        client = TestClient(create_app(service, history, FakeAuthService(), UsageLimits(InMemoryUsageCounter())))
 
         response = client.post(
             "/emails/process/stream",

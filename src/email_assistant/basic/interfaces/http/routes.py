@@ -1,4 +1,5 @@
 from uuid import UUID
+from email_assistant.basic.application.usage import UsageLimits
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response, status, Depends
 from email_assistant.basic.domain.users import User
@@ -27,6 +28,7 @@ def create_router(
     service: ProcessEmailService,  # Dependency injection at the HTTP boundary.
     history_service: EmailHistoryService,
     auth: AuthDependencies,
+    usage: UsageLimits,
 ) -> APIRouter:
     """Create HTTP routes using the provided application service."""
 
@@ -54,6 +56,7 @@ def create_router(
     ) -> ProcessEmailResponse:
         """Classify an email and perform the appropriate action."""
 
+        usage.process(user.id)
         email = request.to_domain()
         result = await service.process(email, user)
 
@@ -70,6 +73,9 @@ def create_router(
     ) -> ProcessEmailsBatchResponse:
         """Process a bounded batch of emails concurrently."""
 
+        if len(request.emails) > usage.emails_per_minute:
+            raise HTTPException(422, "Batch exceeds the configured per-minute capacity; split it into smaller batches.")
+        usage.process(user.id, len(request.emails))
         results = await service.process_many(request.to_domain(), user)
 
         return ProcessEmailsBatchResponse.from_results(results)
@@ -92,6 +98,7 @@ def create_router(
     ) -> StreamingResponse:
         """Stream processing progress and the drafted reply over SSE."""
 
+        usage.process(user.id)
         event_stream = stream_process_email_events(
             service,
             body.to_domain(),

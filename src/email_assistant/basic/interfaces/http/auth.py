@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
+from email_assistant.basic.application.usage import UsageLimits
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
@@ -38,7 +39,7 @@ class AuthDependencies:
         return current_user
 
 
-def create_auth_router(auth: AuthDependencies) -> APIRouter:
+def create_auth_router(auth: AuthDependencies, usage: UsageLimits) -> APIRouter:
     router = APIRouter(tags=["Authentication"])
 
     @router.post("/auth/register", response_model=User, status_code=201)
@@ -46,7 +47,8 @@ def create_auth_router(auth: AuthDependencies) -> APIRouter:
         return await auth.service.register(str(body.email), body.password)
 
     @router.post("/auth/login", response_model=TokenResponse)
-    async def login(body: LoginRequest):
+    async def login(body: LoginRequest, request: Request):
+        usage.login(request.client.host if request.client else "unknown", str(body.email))
         return TokenResponse(access_token=await auth.service.login(str(body.email), body.password))
 
     @router.post("/auth/logout", status_code=204)

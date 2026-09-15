@@ -1,5 +1,7 @@
 import os
 import unittest
+from email_assistant.basic.application.usage import UsageLimits
+from email_assistant.basic.infrastructure.usage_counter import InMemoryUsageCounter
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -46,7 +48,8 @@ class AuthIntegrationTests(unittest.IsolatedAsyncioTestCase):
         repo = SqlAlchemyEmailProcessingRepository(db.sessions)
         auth = AuthService(SqlAlchemyAuthRepository(db.sessions), ArgonPasswordHasher(), JwtTokenCodec("t" * 48))
         classifier = TrackingClassifier(TriageClassification.RESPOND)
-        app = create_app(ProcessEmailService(classifier, RecordingResponder(), repo), EmailHistoryService(repo), auth)
+        app = create_app(ProcessEmailService(classifier, RecordingResponder(), repo), EmailHistoryService(repo), auth,
+                         UsageLimits(InMemoryUsageCounter()))
         ids = []
         payload = {"author": "sender@example.com", "to": "recipient@example.com",
                    "subject": "Auth test", "email_thread": "Please reply"}

@@ -1,4 +1,6 @@
 from dataclasses import dataclass
+from email_assistant.basic.application.usage import UsageLimits
+from email_assistant.basic.infrastructure.usage_counter import InMemoryUsageCounter
 
 from dotenv import load_dotenv
 from email_assistant.basic.application.auth import AuthService
@@ -31,6 +33,7 @@ class ApplicationContainer:
     email_history_service: EmailHistoryService
     database: Database
     auth_service: AuthService
+    usage: UsageLimits
 
 
 def build_application(
@@ -64,6 +67,8 @@ def build_application(
         ),
         email_history_service=EmailHistoryService(repository),
         database=database,
+        usage=UsageLimits(InMemoryUsageCounter(), settings.emails_per_minute,
+                          settings.login_ip_per_minute, settings.login_email_per_minute),
         auth_service=AuthService(SqlAlchemyAuthRepository(database.sessions),
                                  ArgonPasswordHasher(), JwtTokenCodec(settings.jwt_secret.get_secret_value()),
                                  settings.access_token_minutes),
