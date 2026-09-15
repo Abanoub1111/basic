@@ -12,6 +12,7 @@ from email_assistant.basic.application.models import (
     ProcessingAction,
 )
 from email_assistant.basic.application.ports import (
+    ClassificationCache,
     EmailClassifier,
     EmailProcessingRepository,
     EmailResponder,
@@ -106,11 +107,13 @@ class ProcessEmailService:
         responder: EmailResponder,
         repository: EmailProcessingRepository,
         max_concurrency: int = 3,
+        classification_cache: ClassificationCache | None = None,
     ) -> None:
         if max_concurrency < 1:
             raise ValueError("max_concurrency must be at least 1")
 
         self._classifier = classifier
+        self._classification_cache = classification_cache
         self._responder = responder
         self._repository = repository
         self._concurrency_limiter = asyncio.Semaphore(max_concurrency)
@@ -157,7 +160,13 @@ class ProcessEmailService:
 
             try:
                 yield EmailProcessingStarted(record_id=record.id)
-                triage_result = await self._classifier.classify(email)
+                triage_result = None
+                if self._classification_cache is not None:
+                    triage_result = await self._classification_cache.get(user.id, email)
+                if triage_result is None:
+                    triage_result = await self._classifier.classify(email)
+                    if self._classification_cache is not None:
+                        await self._classification_cache.set(user.id, email, triage_result)
                 yield EmailClassified(triage=triage_result)
 
                 reply = None

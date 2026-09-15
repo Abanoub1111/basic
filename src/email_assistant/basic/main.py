@@ -1,10 +1,13 @@
 from contextlib import asynccontextmanager
+import logging
 
 from fastapi import FastAPI
 
 from email_assistant.basic.bootstrap import build_application
 from email_assistant.basic.interfaces.http.app import create_app
 
+
+logging.basicConfig(level=logging.INFO)
 
 container = build_application()
 

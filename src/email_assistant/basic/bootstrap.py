@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from email_assistant.basic.application.usage import UsageLimits
 from email_assistant.basic.infrastructure.usage_counter import InMemoryUsageCounter
+from email_assistant.basic.infrastructure.classification_cache import InMemoryClassificationCache
 
 from dotenv import load_dotenv
 from email_assistant.basic.application.auth import AuthService
@@ -64,6 +65,13 @@ def build_application(
             responder=responder,
             repository=repository,
             max_concurrency=settings.groq_max_concurrency,
+            classification_cache=(
+                InMemoryClassificationCache(
+                    ttl_seconds=settings.classification_cache_ttl_seconds,
+                    max_entries=settings.classification_cache_max_entries,
+                )
+                if settings.classification_cache_enabled else None
+            ),
         ),
         email_history_service=EmailHistoryService(repository),
         database=database,

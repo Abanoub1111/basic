@@ -18,6 +18,16 @@ class EmailClassifier(Protocol):
         ...
 
 
+class ClassificationCache(Protocol):
+    """Temporary classification storage, isolated by the requesting user."""
+
+    async def get(self, user_id: UUID, email: Email) -> TriageResult | None:
+        ...
+
+    async def set(self, user_id: UUID, email: Email, result: TriageResult) -> None:
+        ...
+
+
 class EmailResponder(Protocol):
     """Contract for anything capable of responding to an email."""
 

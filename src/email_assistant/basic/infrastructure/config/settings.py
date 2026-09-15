@@ -30,6 +30,9 @@ class AppSettings(DatabaseSettings):
     emails_per_minute: int = Field(default=20, ge=1)
     login_ip_per_minute: int = Field(default=10, ge=1)
     login_email_per_minute: int = Field(default=5, ge=1)
+    classification_cache_enabled: bool = True
+    classification_cache_ttl_seconds: int = Field(default=300, ge=1)
+    classification_cache_max_entries: int = Field(default=1000, ge=1)
 
     @field_validator("groq_api_key", "langsmith_api_key")
     @classmethod
