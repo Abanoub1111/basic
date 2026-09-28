@@ -21,6 +21,15 @@ class Email:
 
 
 @dataclass(frozen=True)
+class EmailReply:
+    """The reply drafted while processing an email."""
+
+    recipient: str
+    subject: str
+    content: str
+
+
+@dataclass(frozen=True)
 class TriageResult:
     """The result produced by classifying an email."""
 

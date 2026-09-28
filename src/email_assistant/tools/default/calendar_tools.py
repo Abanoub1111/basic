@@ -1,9 +1,15 @@
-from datetime import datetime
+from datetime import date
+
 from langchain_core.tools import tool
+
 
 @tool
 def schedule_meeting(
-    attendees: list[str], subject: str, duration_minutes: int, preferred_day: datetime, start_time: int
+    attendees: list[str],
+    subject: str,
+    duration_minutes: int,
+    preferred_day: date,
+    start_time: int,
 ) -> str:
     """Schedule a calendar meeting."""
     # Placeholder response - in real app would check calendar and schedule

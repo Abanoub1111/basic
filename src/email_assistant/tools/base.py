@@ -1,4 +1,4 @@
-from typing import Dict, List, Callable, Any, Optional
+from typing import Dict, List, Optional
 from langchain_core.tools import BaseTool
 
 def get_tools(tool_names: Optional[List[str]] = None, include_gmail: bool = False) -> List[BaseTool]:

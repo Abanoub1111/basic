@@ -10,6 +10,10 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
 
 # Virtual environments
 .venv/
@@ -26,3 +30,5 @@ dist/
 .vscode/
 .DS_Store
 Thumbs.db
+
+tmp
