@@ -1,8 +1,10 @@
 # Chapter 11: simple testing with pytest
 
 This branch replaces the previous `unittest` suite with pytest functions.
-Application code is unchanged. Tests are kept under one `tests/` directory;
-each test arranges inputs, runs an operation, then asserts the result.
+Application code is unchanged. Tests are grouped into three test files under
+`tests/`: unit, integration, and end-to-end. Each test arranges inputs, runs an
+operation, then asserts the result. Shared helpers remain in `conftest.py` and
+`fakes.py`.
 
 ## Install and run
 
@@ -19,7 +21,9 @@ Use `python3` instead of `python` if that is your Linux command.
 Do not use `unittest discover` for these new pytest functions.
 
 ```shell
-python -m pytest tests/test_cache.py -v
+python -m pytest tests/test_unit.py -v
+python -m pytest tests/test_integration.py -v
+python -m pytest tests/test_end_to_end.py -v
 python -m pytest --cov=email_assistant --cov-report=term-missing
 ```
 
@@ -33,20 +37,42 @@ logs from deliberately simulated provider failures stay captured on successful r
 | --- | --- |
 | `conftest.py` | Function-scoped fixtures, dependency injection, test-client setup/cleanup, opt-in flags |
 | `fakes.py` | One in-memory repository with owner filtering; fresh for each test |
-| `test_processing.py` | Unit tests for decisions, failures, cancellation, caching, batch order/concurrency |
-| `test_cache.py` | Parameterized exact-match keys, TTL boundaries, LRU capacity, invalid settings |
-| `test_validation.py` | Valid/invalid/boundary inputs, token validation, registration and calendar behavior |
-| `test_usage.py` | Weighted limits, expiration, concurrency and atomic login quotas |
-| `test_ai_adapters.py` | Patching the model boundary while testing real adapter validation and graph execution |
-| `test_api.py` | Vertical/API workflows, history isolation, streaming, shared cache/quota, authentication |
-| `test_database.py` | Real repository integration plus registration-to-logout workflow with stubbed AI |
-| `test_ai_behavior.py` | Opt-in live classifier minimum functionality, invariance and directional expectation tests |
+| `test_unit.py` | 35 cases: processing decisions, cancellation, batch concurrency, cache, input/token validation, rate limits, and classifier output validation with mocked model calls |
+| `test_integration.py` | 16 cases: graph/tool execution, HTTP/service interactions, one real PostgreSQL repository test, and six live AI behavioral cases |
+| `test_end_to_end.py` | 2 cases: process/read/delete history with test doubles, and registration/login/process/history/logout with real authentication and PostgreSQL but mocked AI |
+
+There are still 53 cases (31 test functions expanded by parameterization). The
+default run executes 45 and skips the two database and six live AI cases. External
+markers apply to individual tests, so sharing a file does not make offline tests
+require a database or API key. End-to-end here describes complete HTTP workflows;
+it does not mean every dependency is real.
 
 The `AsyncMock` fixtures supply fixed AI outputs and record awaited calls (mock/spy
 behavior). Fake clocks avoid sleeping for cache and rate-limit expiration. Async
 events coordinate the concurrency test; timeouts prevent it from hanging.
 
 ## Optional PostgreSQL tests
+
+For automatic setup, add `TEST_DATABASE_URL` to `.env` with a database name ending
+in `_test`. Start PostgreSQL, then run the helper from the project root:
+
+```shell
+docker compose up -d --wait postgres
+python run_tests.py
+```
+
+The helper loads `.env`, creates the test database if missing, applies migrations,
+and runs the two database cases. It does not drop existing databases. The database
+user needs permission to create a database on the first run. Application settings
+in `.env` are not changed.
+
+To run all 53 cases, including paid live AI calls using `GROQ_API_KEY` from `.env`:
+
+```shell
+python run_tests.py --all
+```
+
+The manual equivalent is below.
 
 Use a dedicated test database. The following assumes the repository's Compose
 settings and Docker Compose are available:

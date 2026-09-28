@@ -1,25 +1,54 @@
-"""Fresh fixtures keep tests independent; external services are opt-in."""
+"""Fresh shared fixtures and opt-in flags for the three test modules."""
 from unittest.mock import AsyncMock
 from uuid import uuid4
+import os
 
-import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import delete, select
+import pytest
 
-from email_assistant.basic.application.auth import AuthenticationError
-from email_assistant.basic.application.services import EmailHistoryService, ProcessEmailService
+from email_assistant.basic.application.auth import AuthenticationError, AuthService
+from email_assistant.basic.application.services import ProcessEmailService, EmailHistoryService
 from email_assistant.basic.application.usage import UsageLimits
-from email_assistant.basic.domain.models import Email, EmailReply, TriageClassification, TriageResult
+from email_assistant.basic.domain.models import TriageClassification, TriageResult, Email, EmailReply
 from email_assistant.basic.domain.users import User, UserRole
 from email_assistant.basic.infrastructure.classification_cache import InMemoryClassificationCache
+from email_assistant.basic.infrastructure.database import Database
+from email_assistant.basic.infrastructure.database.auth_repository import SqlAlchemyAuthRepository
+from email_assistant.basic.infrastructure.database.models import UserRow, SessionRow, EmailProcessingRecordRow
+from email_assistant.basic.infrastructure.security import JwtTokenCodec, ArgonPasswordHasher
 from email_assistant.basic.infrastructure.usage_counter import InMemoryUsageCounter
 from email_assistant.basic.interfaces.http.app import create_app
 from tests.fakes import MemoryRepository
 
+@pytest.fixture
+async def database():
+    url = os.getenv('TEST_DATABASE_URL')
+    if not url:
+        pytest.fail('Set TEST_DATABASE_URL to a migrated, disposable PostgreSQL database')
+    db = Database(url)
+    # Exact unique addresses limit cleanup to accounts created by this fixture.
+    addresses = [f'ch11-{uuid4()}@example.com' for _ in range(2)]
+    try:
+        yield db, addresses
+    finally:
+        try:
+            async with db.sessions.begin() as session:
+                ids = select(UserRow.id).where(UserRow.email.in_(addresses))
+                await session.execute(delete(EmailProcessingRecordRow).where(EmailProcessingRecordRow.owner_id.in_(ids)))
+                await session.execute(delete(SessionRow).where(SessionRow.user_id.in_(ids)))
+                await session.execute(delete(UserRow).where(UserRow.email.in_(addresses)))
+        finally:
+            await db.dispose()
+
+@pytest.fixture
+def real_auth(database):
+    db, _ = database
+    return AuthService(SqlAlchemyAuthRepository(db.sessions), ArgonPasswordHasher(), JwtTokenCodec('t' * 48))
 
 def pytest_addoption(parser):
     parser.addoption('--run-database', action='store_true', help='Run PostgreSQL tests')
     parser.addoption('--run-ai', action='store_true', help='Run live Groq evaluations')
-
 
 def pytest_collection_modifyitems(config, items):
     for item in items:
@@ -27,28 +56,23 @@ def pytest_collection_modifyitems(config, items):
             if marker in item.keywords and not config.getoption(flag):
                 item.add_marker(pytest.mark.skip(reason=f'Opt in with {flag}'))
 
-
 @pytest.fixture
 def user():
     return User(uuid4(), 'tester@example.com', UserRole.USER, True)
-
 
 @pytest.fixture
 def email():
     return Email('sender@example.com', 'assistant@example.com',
                  'Project question', 'Could you explain the project status?')
 
-
 @pytest.fixture
 def payload(email):
     return dict(author=email.author, to=email.recipient,
                 subject=email.subject, email_thread=email.thread)
 
-
 @pytest.fixture
 def repository():
     return MemoryRepository()
-
 
 @pytest.fixture
 def classifier():
@@ -56,25 +80,21 @@ def classifier():
     classifier.classify.return_value = TriageResult(TriageClassification.RESPOND, 'Reply requested')
     return classifier
 
-
 @pytest.fixture
 def responder(email):
     responder = AsyncMock()
     responder.respond.return_value = EmailReply(email.author, 'Re: Project question', 'I will check.')
     return responder
 
-
 @pytest.fixture
 def now():
     # Tests advance this clock instantly instead of sleeping.
     return [0.0]
 
-
 @pytest.fixture
 def service(classifier, responder, repository, now):
     return ProcessEmailService(classifier, responder, repository, max_concurrency=2,
                                classification_cache=InMemoryClassificationCache(clock=lambda: now[0]))
-
 
 @pytest.fixture
 def auth(user):
@@ -89,7 +109,6 @@ def auth(user):
     auth.login.side_effect = AuthenticationError()
     return auth
 
-
 @pytest.fixture
 def client(service, repository, auth, now):
     usage = UsageLimits(InMemoryUsageCounter(lambda: now[0]), emails_per_minute=4,
@@ -97,7 +116,6 @@ def client(service, repository, auth, now):
     app = create_app(service, EmailHistoryService(repository), auth, usage)
     with TestClient(app) as client:
         yield client
-
 
 @pytest.fixture
 def headers():
