@@ -3,8 +3,9 @@
 This branch replaces the previous `unittest` suite with pytest functions.
 Application code is unchanged. Tests are grouped into three test files under
 `tests/`: unit, integration, and end-to-end. Each test arranges inputs, runs an
-operation, then asserts the result. Shared helpers remain in `conftest.py` and
-`fakes.py`.
+operation, then asserts the result. Shared fixtures live in `conftest.py`.
+All tests that store users or processing history use the production PostgreSQL
+repositories. There is no fake database repository.
 
 ## Install and run
 
@@ -36,13 +37,12 @@ logs from deliberately simulated provider failures stay captured on successful r
 | File | Scope and purpose |
 | --- | --- |
 | `conftest.py` | Function-scoped fixtures, dependency injection, test-client setup/cleanup, opt-in flags |
-| `fakes.py` | One in-memory repository with owner filtering; fresh for each test |
-| `test_unit.py` | 35 cases: processing decisions, cancellation, batch concurrency, cache, input/token validation, rate limits, and classifier output validation with mocked model calls |
-| `test_integration.py` | 16 cases: graph/tool execution, HTTP/service interactions, one real PostgreSQL repository test, and six live AI behavioral cases |
-| `test_end_to_end.py` | 2 cases: process/read/delete history with test doubles, and registration/login/process/history/logout with real authentication and PostgreSQL but mocked AI |
+| `test_unit.py` | 28 cases: cache, input/token validation, rate limits, and classifier output validation with mocked model calls; no storage needed |
+| `test_integration.py` | 23 cases: processing decisions, cancellation, batch concurrency, graph/tool execution, HTTP/service interactions, PostgreSQL persistence, and six live AI behavioral cases |
+| `test_end_to_end.py` | 2 cases: process/read/delete history and registration/login/process/history/logout; both use PostgreSQL with mocked AI |
 
 There are still 53 cases (31 test functions expanded by parameterization). The
-default run executes 45 and skips the two database and six live AI cases. External
+default run executes 29 and skips the 18 database and six live AI cases. External
 markers apply to individual tests, so sharing a file does not make offline tests
 require a database or API key. End-to-end here describes complete HTTP workflows;
 it does not mean every dependency is real.
@@ -62,7 +62,7 @@ python run_tests.py
 ```
 
 The helper loads `.env`, creates the test database if missing, applies migrations,
-and runs the two database cases. It does not drop existing databases. The database
+and runs the 18 database cases. It does not drop existing databases. The database
 user needs permission to create a database on the first run. Application settings
 in `.env` are not changed.
 

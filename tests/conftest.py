@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock
 from uuid import uuid4
 import os
 
-from fastapi.testclient import TestClient
+import httpx
 from sqlalchemy import delete, select
 import pytest
 
@@ -13,13 +13,12 @@ from email_assistant.basic.application.usage import UsageLimits
 from email_assistant.basic.domain.models import TriageClassification, TriageResult, Email, EmailReply
 from email_assistant.basic.domain.users import User, UserRole
 from email_assistant.basic.infrastructure.classification_cache import InMemoryClassificationCache
-from email_assistant.basic.infrastructure.database import Database
+from email_assistant.basic.infrastructure.database import Database, SqlAlchemyEmailProcessingRepository
 from email_assistant.basic.infrastructure.database.auth_repository import SqlAlchemyAuthRepository
 from email_assistant.basic.infrastructure.database.models import UserRow, SessionRow, EmailProcessingRecordRow
 from email_assistant.basic.infrastructure.security import JwtTokenCodec, ArgonPasswordHasher
 from email_assistant.basic.infrastructure.usage_counter import InMemoryUsageCounter
 from email_assistant.basic.interfaces.http.app import create_app
-from tests.fakes import MemoryRepository
 
 @pytest.fixture
 async def database():
@@ -71,8 +70,14 @@ def payload(email):
                 subject=email.subject, email_thread=email.thread)
 
 @pytest.fixture
-def repository():
-    return MemoryRepository()
+async def db_user(database, real_auth):
+    _, addresses = database
+    return await real_auth.register(addresses[0], 'a long test password')
+
+@pytest.fixture
+def repository(database):
+    db, _ = database
+    return SqlAlchemyEmailProcessingRepository(db.sessions)
 
 @pytest.fixture
 def classifier():
@@ -97,24 +102,24 @@ def service(classifier, responder, repository, now):
                                classification_cache=InMemoryClassificationCache(clock=lambda: now[0]))
 
 @pytest.fixture
-def auth(user):
+def auth(db_user):
     auth = AsyncMock()
 
     async def current_user(token):
         if token != 'test':
             raise AuthenticationError()
-        return user
+        return db_user
 
     auth.current_user.side_effect = current_user
     auth.login.side_effect = AuthenticationError()
     return auth
 
 @pytest.fixture
-def client(service, repository, auth, now):
+async def client(service, repository, auth, now):
     usage = UsageLimits(InMemoryUsageCounter(lambda: now[0]), emails_per_minute=4,
                         login_ip_per_minute=2, login_email_per_minute=1)
     app = create_app(service, EmailHistoryService(repository), auth, usage)
-    with TestClient(app) as client:
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test') as client:
         yield client
 
 @pytest.fixture

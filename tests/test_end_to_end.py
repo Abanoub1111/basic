@@ -11,18 +11,19 @@ from email_assistant.basic.interfaces.http.app import create_app
 # HTTP routes and workflows
 
 
-def test_process_read_and_delete_history(client, payload, headers):
-    response = client.post('/emails/process', json=payload, headers=headers)
+@pytest.mark.database
+async def test_process_read_and_delete_history(client, payload, headers):
+    response = await client.post('/emails/process', json=payload, headers=headers)
     assert response.status_code == 200
     result = response.json()
     assert result['action'] == 'responded'
     path = f"/emails/history/{result['record_id']}"
-    stored = client.get(path, headers=headers)
+    stored = await client.get(path, headers=headers)
     assert stored.status_code == 200
     assert stored.json()['result'] == result
-    assert len(client.get('/emails/history', headers=headers).json()['items']) == 1
-    assert client.delete(path, headers=headers).status_code == 204
-    assert client.get(path, headers=headers).status_code == 404
+    assert len((await client.get('/emails/history', headers=headers)).json()['items']) == 1
+    assert (await client.delete(path, headers=headers)).status_code == 204
+    assert (await client.get(path, headers=headers)).status_code == 404
 
 # PostgreSQL (opt-in)
 
